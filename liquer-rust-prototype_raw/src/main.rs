@@ -1,3 +1,4 @@
+
 #[macro_use]
 extern crate nom;
 extern crate regex;
@@ -18,16 +19,16 @@ use nom::multi::{many1, many0};
 use nom::combinator::cut;
 use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
-use wasm_bindgen::prelude::*;
 
 mod utils;
 
+/*
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
+*/
 /*
 #[wasm_bindgen]
 extern {
@@ -54,20 +55,15 @@ fn parse_action(text:&str) ->IResult<&str, Action>{
 
     Ok((text, Action{name:name, parameters:p.iter().map(|x| x.1.to_string()).collect()}))
 }
-
+/*
 fn parse4(text:&str) -> IResult<&str, (&str, &str)>{
     let (text, hello) = tag("hello")(text)?;
     let (text, sep) = re_find!(text,"^\\s*,\\s*")?; 
     Ok((text,(hello,sep)))
 } 
-/*
-#[wasm_bindgen]
-pub fn greet() {
-    alert("Hello, liquer-rust-prototype!");
-}
 */
-#[wasm_bindgen]
-#[no_mangle]
-pub fn parse_action1(text:&str) -> JsValue {
-    JsValue::from_serde(&parse_action(text).unwrap().1).unwrap()
+
+fn main(){
+    println!("Hello LQ test");
+    println!("{:?}", parse_action("Hello LQ test"))
 }
