@@ -11,10 +11,15 @@ class Item(NamedTuple):
     def parameters_decoded(self):
         return [x.decode_parameter() for x in self.parameters]
 
+class Resource(NamedTuple):
+    name:str
+    def __str__(self):
+        return self.name
+
 class Path(NamedTuple):
     items:list
-    is_absolute:bool
-    is_dir:bool
+    start_slash:bool
+    end_slash:bool
 
     def __str__(self):
         return self.encode()
@@ -26,7 +31,7 @@ class Path(NamedTuple):
         res += "/" if self.is_dir else ""
         return res        
     def as_subpath(self):
-        return SubPath(self.items, self.is_absolute, self.is_dir)
+        return SubPath(self.items, self.start_slash, self.end_slash)
 
 class SubPath(Path):
     def __str__(self):
@@ -61,6 +66,9 @@ item_separator = Literal("/").suppress()
 separator = Literal("-").suppress()
 empty_parameter = Literal("-").setParseAction(lambda s,loc,toks: [""])
 identifier = Word(alphas+"_", alphanums+"_").setName("identifier")
+resource1 = Regex(r"[a-zA-Z0-9_]\.[a-zA-Z0-9._-]*").setParseAction(lambda s,loc,toks: Resource(toks[0]))
+resource2 = Regex(r"\.[a-zA-Z0-9._-]+").setParseAction(lambda s,loc,toks: Resource(toks[0][1:]))
+resources = 
 parameter_fragment = Regex("[^/~-]+").setWhitespaceChars("")
 
 escape = Literal("~~").setParseAction(lambda s,loc,toks: ["~"])
