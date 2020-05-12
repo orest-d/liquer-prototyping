@@ -20,6 +20,30 @@ use nom::combinator::cut;
 use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
 
+use std::result::Result;
+use std::error;
+use std::fmt;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum Error{
+    General(String)
+}
+
+impl fmt::Display for Error{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::General(message) => write!(f, "Error: {}", message),
+        }
+    }    
+}
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            _ => None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Action{
     name:String,
@@ -52,7 +76,6 @@ struct State{
     vars:HashMap<String,Value>,
     attributes:HashMap<String,Value>,
     filename:String,
-    data:Value,
     message:String,
     type_identifier:String,
     cache_allowed:bool,
@@ -87,32 +110,30 @@ struct ActionMetadata{
 struct ArgumentMetadata{
     name: String,
     data_type: String,
-    default: Option<String>
+    default: Option<Vec<String>>
 }
 
 trait ArgumentParser<T>{
     fn data_type(&self)->String;
-    fn parse(&self,argv:&mut Vec<String>, metadata:ArgumentMetadata)->Option<(T, Vec<String>)>;
+    fn parse<'a>(&self, argv:&'a [String], metadata:&ArgumentMetadata)->Result<(T, &'a [String]), Error>;
 }
 
 struct I32ArgumentParser;
 
 impl ArgumentParser<i32> for I32ArgumentParser{
     fn data_type(&self)->String{"i32".to_owned()}
-    fn parse(&self, argv:&mut Vec<String>, metadata:ArgumentMetadata)->Option<(i32, Vec<String>)>{
-        let a = argv.pop().unwrap_or(metadata.default.unwrap_or("".to_owned()));
-        if a.len()==0{
-            None
-        }
-        else{
-            let x = a.parse::<i32>();
-            if x.is_ok(){
-                Some((x.unwrap(), argv.to_vec()))
-            }
-            else{
-                None
-            }
-        }
+    fn parse<'a>(&self, argv:&'a [String], metadata:&ArgumentMetadata)->Result<(i32, &'a [String]),Error>{
+        let (a, rest) =
+          argv.split_first().map(|(a,rest)| (a, rest))
+          .or_else(||{
+            metadata.default.as_ref().and_then(|v| {
+                v.first().map(|f| (f, argv))
+            })
+          }).ok_or(Error::General(format!("Argument {} missing", metadata.name)))?;
+
+        a.parse::<i32>()
+        .map(|x| (x,rest))
+        .map_err(|e| Error::General(format!("Error parsing argument {};{}",metadata.name,e)))
     }
 }
 
