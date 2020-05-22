@@ -9,6 +9,8 @@ extern crate serde_yaml;
 #[macro_use]
 extern crate serde_derive;
 
+mod value;
+
 use std::collections::HashMap;
 
 use nom::bytes::complete::{tag, is_a, take_while, take_while1};
@@ -112,7 +114,7 @@ struct ArgumentMetadata{
     data_type: String,
     default: Option<Vec<String>>
 }
-
+/*
 trait ArgumentParser<T>{
     fn data_type(&self)->String;
     fn parse<'a>(&self, argv:&'a [String], metadata:&ArgumentMetadata)->Result<(T, &'a [String]), Error>;
@@ -134,6 +136,42 @@ impl ArgumentParser<i32> for I32ArgumentParser{
         a.parse::<i32>()
         .map(|x| (x,rest))
         .map_err(|e| Error::General(format!("Error parsing argument {};{}",metadata.name,e)))
+    }
+}
+*/
+
+enum ArgumentValue<'a, T>{
+    StringValue(&'a str),
+    Value(&'a T)
+}
+
+trait ArgumentValueDecode<T> {
+    fn decode(&self, metadata:&ArgumentMetadata)->Result<T, Error>;
+}
+
+impl ArgumentValueDecode<i32> for &str{
+    fn decode(&self, metadata:&ArgumentMetadata)->Result<i32, Error>{
+        self.parse().map_err(|e| Error::General(format!("Error parsing argument {};{}",metadata.name,e)))
+    }
+}
+
+impl<'a, T> ArgumentValueDecode<i32> for ArgumentValue<'a, T>{
+    fn decode(&self, metadata:&ArgumentMetadata)->Result<i32, Error>{
+        match self {
+            ArgumentValue::StringValue(s) => s.decode(metadata),
+            _ => Err(Error::General(format!("Argument {} type not supported",metadata.name)))
+        }
+    }
+}
+
+
+trait ArgumentParser<T>{
+    fn parse(&mut self, metadata:&ArgumentMetadata)->Result<T, Error>;
+}
+
+impl<T,R,AV> ArgumentParser<R> for T where T:Iterator<Item=AV>{
+    fn parse(&mut self, metadata:&ArgumentMetadata)->Result<R, Error>{
+        Err(Error::General(format!("Argument {} type not supported",metadata.name)))
     }
 }
 
