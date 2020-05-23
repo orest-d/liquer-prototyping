@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate nom;
 extern crate regex;
 
@@ -10,41 +9,18 @@ extern crate serde_yaml;
 extern crate serde_derive;
 
 mod value;
+mod error;
+mod query;
+mod parse;
 
 use std::collections::HashMap;
 
-use nom::bytes::complete::{tag, is_a, take_while, take_while1};
+use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::*;
-use nom::character::complete::alphanumeric1;
-use nom::branch::alt;
-use nom::multi::{many1, many0, separated_list};
-use nom::combinator::cut;
+use nom::multi::{many0, separated_list};
 use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
 
-use std::result::Result;
-use std::error;
-use std::fmt;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-enum Error{
-    General(String)
-}
-
-impl fmt::Display for Error{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::General(message) => write!(f, "Error: {}", message),
-        }
-    }    
-}
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            _ => None,
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Action{
@@ -140,6 +116,7 @@ impl ArgumentParser<i32> for I32ArgumentParser{
 }
 */
 
+/*
 enum ArgumentValue<'a, T>{
     StringValue(&'a str),
     Value(&'a T)
@@ -236,6 +213,7 @@ impl Cache for MemoryCache{
     }
     
 }
+*/
 
 fn identifier(text:&str) ->IResult<&str, String>{
     let (text, a) =take_while1(|c| {is_alphabetic(c as u8)||c=='_'})(text)?;
@@ -261,9 +239,8 @@ fn parse_action_path(text:&str) ->IResult<&str, Vec<Action>>{
     separated_list(tag("/"), parse_action)(text)
 }
 
-
 fn main() {
     println!("Hello, world! {:?}",parse_action_path("aaa-bb-cc/ddd"));
 
-    let mut registry = ActionRegistry::new();
+  //  let mut registry = ActionRegistry::new();
 }
