@@ -12,6 +12,7 @@ mod value;
 mod error;
 mod query;
 mod parse;
+mod action_registry;
 
 use std::collections::HashMap;
 

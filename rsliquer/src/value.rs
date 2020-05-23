@@ -3,6 +3,7 @@ use serde_json;
 use std::result::Result;
 
 use crate::error::Error;
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum Value{
@@ -49,6 +50,18 @@ impl ValueSerializer for Value{
     }
 }
 
+impl TryFrom<Value> for i32{
+    type Error=Error;
+    fn try_from(value: Value) -> Result<Self, Self::Error>{
+        match value{
+            Value::None => Err(Error::ConversionError{message:format!("Can't convert None to integer")}),
+            Value::Text(_) => Err(Error::ConversionError{message:format!("Can't convert Text to integer")}),
+            Value::Integer(x) => Ok(x),
+            Value::Real(x) => Ok(x as i32),           
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -61,6 +74,20 @@ mod tests{
         println!("Serialized    {:?}: {}", v, std::str::from_utf8(&b)?);
         let w:Value = ValueSerializer::from_bytes(&b, "json")?;
         println!("De-Serialized {:?}", w);
+        Ok(())
+    }   
+    #[test]
+    fn test_convert_int() -> Result<(), Box<dyn std::error::Error>>{
+        let v = Value::Integer(123);
+        let x:i32 = v.try_into()?;
+        assert_eq!(x,123);
+        Ok(())
+    }   
+    #[test]
+    fn test_convert_real() -> Result<(), Box<dyn std::error::Error>>{
+        let v = Value::Real(123.1);
+        let x:i32 = v.try_into()?;
+        assert_eq!(x,123);
         Ok(())
     }   
 }
