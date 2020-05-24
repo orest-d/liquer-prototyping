@@ -68,6 +68,29 @@ impl From<i32> for Value{
     }
 }
 
+impl TryFrom<Value> for String{
+    type Error=Error;
+    fn try_from(value: Value) -> Result<Self, Self::Error>{
+        match value{
+            Value::None => Err(Error::ConversionError{message:format!("Can't convert None to string")}),
+            Value::Text(x) => Ok(x),
+            Value::Integer(x) => Ok(format!("{}",x)),
+            Value::Real(x) => Ok(format!("{}",x)),           
+        }
+    }
+}
+
+impl From<String> for Value{
+    fn from(value: String) -> Value{
+        Value::Text(value)
+    }
+}
+impl From<&str> for Value{
+    fn from(value: &str) -> Value{
+        Value::Text(value.to_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -94,6 +117,14 @@ mod tests{
         let v = Value::Real(123.1);
         let x:i32 = v.try_into()?;
         assert_eq!(x,123);
+        Ok(())
+    }   
+    #[test]
+    fn test_convert_text() -> Result<(), Box<dyn std::error::Error>>{
+        let v = Value::from("abc");
+        assert_eq!(v,Value::Text("abc".to_owned()));
+        let x:String = v.try_into()?;
+        assert_eq!(x,"abc");
         Ok(())
     }   
 }

@@ -1,7 +1,7 @@
 use std::result::Result;
 
 use crate::error::Error;
-use crate::query::ActionParameter;
+use crate::query::*;
 use std::convert::TryInto;
 use core::fmt::Display;
 use std::ops::Fn;
@@ -49,24 +49,53 @@ where
 }
 
 pub struct Function1<In,Out>(Box<dyn Fn(In)->Out>);
-
-impl<T> CallableAction<T> for Function1<i32,i32>
+pub struct Function2<In1,In2,Out>(Box<dyn Fn(In1,In2)->Out>);
+/*
+fn call1<T,In,Out>(f:Function1<In,Out>,input:T)->Result<T, Error>
 where
-    T:TryInto<i32>,
-    i32:TryInto<T>,
-    <i32 as std::convert::TryInto<T>>::Error:Display,
-    <T as std::convert::TryInto<i32>>::Error:Display
+T:TryInto<In>,
+<T as std::convert::TryInto<In>>::Error:Display,
+Out:Into<T>
+{
+    let f_input:In = input.try_into()
+    .map_err(|e|
+        Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
+    Ok(f.0(f_input).into())
+}
+*/
+impl<T,In,Out> CallableAction<T> for Function1<In,Out>
+where
+    T:TryInto<In>,
+    Out:Into<T>,
+    <T as std::convert::TryInto<In>>::Error:Display
     {
     fn call_action(&self, input:T, _arguments:Vec<ActionParameter>) -> Result<T, Error>{
-        let f_input:i32 = input.try_into()
+        let f_input:In = input.try_into()
         .map_err(|e|
             Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
 
-            let out:i32 = self.0(f_input);
-            let result:T = out.try_into()
-            .map_err(|e|
-                Error::ConversionError{message:format!("Result conversion failed; {}",e)})?;
-                Ok(result)
+        let out:Out = self.0(f_input);
+        let result:T = out.into();
+        Ok(result)
+    }
+}
+
+impl<T,In1,In2,Out> CallableAction<T> for Function2<In1,In2,Out>
+where
+    T:TryInto<In1>,
+    In2: TryParameterFrom,
+    Out:Into<T>,
+    <T as std::convert::TryInto<In1>>::Error:Display
+    {
+    fn call_action(&self, input:T, arguments:Vec<ActionParameter>) -> Result<T, Error>{
+        let a1:In1 = input.try_into()
+        .map_err(|e|
+            Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
+        let mut par = ActionParametersSlice(&arguments[..]);
+        let a2:In2 =  par.try_parameters_into(&mut ())?;
+        let out:Out = self.0(a1, a2);
+        let result:T = out.into();
+        Ok(result)
     }
 }
 
@@ -76,7 +105,7 @@ mod tests{
     use crate::value::*;
 
     #[test]
-    fn test1()-> Result<(), Box<dyn std::error::Error>>{
+    fn closure_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
         let result = a.call_action(Value::Integer(2),vec![])?;
         assert_eq!(result, Value::Integer(4));
@@ -84,11 +113,28 @@ mod tests{
     }
 
     #[test]
-    fn test2()-> Result<(), Box<dyn std::error::Error>>{
+    fn function1_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
-        let f:Function1<i32,i32> = Function1(Box::new(a));
-        let result = f.call_action(Value::Integer(2),vec![])?;
+        //let f:Function1<i32,i32> = Function1(Box::new(a));
+        let result = Function1(Box::new(a)).call_action(Value::Integer(2),vec![])?;
         assert_eq!(result, Value::Integer(4));
         Ok(())
     }
+    #[test]
+    fn function2_call_action()-> Result<(), Box<dyn std::error::Error>>{
+        let a = |x:i32,y:i32| x*y;
+        //let f:Function1<i32,i32> = Function1(Box::new(a));
+        let result = Function2(Box::new(a)).call_action(Value::Integer(2),vec![ActionParameter::String("3".to_owned())])?;
+        assert_eq!(result, Value::Integer(6));
+        Ok(())
+    }
+    /*
+    #[test]
+    fn test3()-> Result<(), Box<dyn std::error::Error>>{
+        let a = |x:i32| x*x;
+        let f:Function1<i32,i32> = Function1(Box::new(a));
+        assert_eq!(call1(f,Value::Integer(2))?, Value::Integer(4));
+        Ok(())
+    }
+    */
 }
