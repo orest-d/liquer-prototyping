@@ -6,7 +6,7 @@ use nom::multi::{many0, separated_list};
 use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
 
-use crate::query::{ActionParameter, Action};
+use crate::query::{ActionParameter, ActionRequest};
 
 fn identifier(text:&str) ->IResult<&str, String>{
     let (text, a) =take_while1(|c| {is_alphabetic(c as u8)||c=='_'})(text)?;
@@ -21,21 +21,21 @@ fn parameter(text:&str) ->IResult<&str, String>{
 }
 
 
-fn parse_action(text:&str) ->IResult<&str, Action>{
+fn parse_action(text:&str) ->IResult<&str, ActionRequest>{
     let (text, name) =identifier(text)?;
     let (text, p) =many0(pair(tag("-"),parameter))(text)?;
 
-    Ok((text, Action{name:name, parameters:p.iter().map(|x| ActionParameter::String(x.1.to_owned())).collect()}))
+    Ok((text, ActionRequest{name:name, parameters:p.iter().map(|x| ActionParameter::String(x.1.to_owned())).collect()}))
 }
 
-fn parse_action_path(text:&str) ->IResult<&str, Vec<Action>>{
+fn parse_action_path(text:&str) ->IResult<&str, Vec<ActionRequest>>{
     separated_list(tag("/"), parse_action)(text)
 }
 
 #[cfg(test)]
 mod tests{
     use super::*;
-    use crate::query::{ActionParameter,Action};
+    use crate::query::{ActionParameter};
 
     #[test]
     fn parse_action_test() -> Result<(), Box<dyn std::error::Error>>{

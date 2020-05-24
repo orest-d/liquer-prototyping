@@ -25,22 +25,23 @@ where T:TryInto<In>, Out:TryInto<T>{
 }
 */
 
-impl<T> CallableAction<T> for Fn(i32)->i32
+impl<Function,T> CallableAction<T> for Function
 where
+    Function:Fn(i32)->i32,
     T:TryInto<i32>,
     i32:TryInto<T>,
     <i32 as std::convert::TryInto<T>>::Error:Display,
     <T as std::convert::TryInto<i32>>::Error:Display
     {
-    fn call_action(&self, input:T, arguments:Vec<ActionParameter>) -> Result<T, Error>{
+    fn call_action(&self, input:T, _arguments:Vec<ActionParameter>) -> Result<T, Error>{
         let f_input:i32 = input.try_into()
         .map_err(|e|
             Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
-        let out:i32 = self(f_input);
-        let result:T = out.try_into()
-        .map_err(|e|
-            Error::ConversionError{message:format!("Result conversion failed; {}",e)})?;
-        Ok(result)
+            let out:i32 = self(f_input);
+            let result:T = out.try_into()
+            .map_err(|e|
+                Error::ConversionError{message:format!("Result conversion failed; {}",e)})?;
+                Ok(result)
     }
 }
 
@@ -53,7 +54,8 @@ mod tests{
     #[test]
     fn test1()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
-//        let result = a.call_action(Value::Integer(2),vec![])?;
+        let result = a.call_action(Value::Integer(2),vec![])?;
+        assert_eq!(result, Value::Integer(4));
         Ok(())
     }
 }

@@ -6,7 +6,7 @@ pub enum ActionParameter{
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Action{
+pub struct ActionRequest{
     pub name:String,
     pub parameters: Vec<ActionParameter>
 }

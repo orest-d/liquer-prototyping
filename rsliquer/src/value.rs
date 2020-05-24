@@ -5,8 +5,8 @@ use std::result::Result;
 use crate::error::Error;
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-enum Value{
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum Value{
     None,
     Text(String),
     Integer(i32),
@@ -59,6 +59,12 @@ impl TryFrom<Value> for i32{
             Value::Integer(x) => Ok(x),
             Value::Real(x) => Ok(x as i32),           
         }
+    }
+}
+
+impl From<i32> for Value{
+    fn from(value: i32) -> Value{
+        Value::Integer(value)
     }
 }
 
