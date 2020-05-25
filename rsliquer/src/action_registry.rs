@@ -5,6 +5,7 @@ use crate::query::*;
 use std::convert::TryInto;
 use core::fmt::Display;
 use std::ops::Fn;
+use std::collections::HashMap;
 
 trait CallableAction<T>{
     fn call_action(&self, input:T, arguments:Vec<ActionParameter>) -> Result<T, Error>;
@@ -99,6 +100,36 @@ where
     }
 }
 
+pub struct HashMapActionRegistry<T>(
+    HashMap<
+        String,
+        HashMap<String, Box<dyn CallableAction<T>>>
+    >
+);
+
+impl<T> HashMapActionRegistry<T>{
+    pub fn new()->Self{
+        HashMapActionRegistry::<T>(HashMap::new())
+    }
+
+    pub fn register_callable_action(&mut self, ns:&str, name:&str, action:Box<dyn CallableAction<T>>){
+        let ns = ns.to_owned();
+        let name = name.to_owned();
+        let ns_registry = self.0.entry(ns).or_insert(HashMap::new());
+        ns_registry.insert(name, action);
+    }
+
+    pub fn call(&self, ns:&str, name:&str, input:T, arguments:Vec<ActionParameter>)->Result<T, Error>{
+        self.0.get(ns)
+        .ok_or_else(|| Error::ActionNotRegistered{message:format!("Action {} not registered in namespace {}; no such namespace",name,ns)})
+        .and_then(
+            |ns_registry|
+            ns_registry.get(name)
+            .ok_or_else(|| Error::ActionNotRegistered{message:format!("Action {} not registered in namespace {}",name,ns)})
+        )?.call_action(input, arguments)
+    }
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -137,4 +168,13 @@ mod tests{
         Ok(())
     }
     */
+    #[test]
+    fn test_registry1()->Result<(),Box<dyn std::error::Error>>{
+        let mut registry = HashMapActionRegistry::<Value>::new();
+        let a = |x:i32| x*x;
+        registry.register_callable_action("root", "test", Box::new(Function1(Box::new(a))));
+        let result = registry.call("root", "test", Value::Integer(2), vec![])?;
+        assert_eq!(result, Value::Integer(4));
+        Ok(())   
+    }
 }

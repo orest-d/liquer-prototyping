@@ -4,6 +4,7 @@ use std::fmt;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Error{
     ArgumentNotSpecified,
+    ActionNotRegistered{message:String},
     ParameterError{message:String},
     ConversionError{message:String},
     SerializationError{message:String, format:String},
@@ -14,6 +15,7 @@ impl fmt::Display for Error{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::ArgumentNotSpecified => write!(f, "Argument not specified"),
+            Error::ActionNotRegistered{message} => write!(f, "Error: {}", message),
             Error::ParameterError{message} => write!(f, "Error: {}", message),
             Error::ConversionError{message} => write!(f, "Error: {}", message),
             Error::SerializationError{message, format:_} => write!(f, "Error: {}", message),
