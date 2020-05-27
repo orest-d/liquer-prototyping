@@ -1,15 +1,50 @@
 use std::result::Result;
+use std::fmt::Display;
+use std::option::Option;
 use crate::error::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Position{
+    pub offset:usize,
+    pub line:u32,
+    pub column:usize
+}
+
+impl Position{
+    pub fn unknown()->Position{
+        Position{offset:0, line:0, column:0}
+    }
+}
+impl Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.line==0{
+            write!(f, "(unknown position)")
+        }
+        else if self.line>1{
+            write!(f, "line {}, position {}", self.line, self.column)
+        }
+        else{
+            write!(f, "position {}", self.column)
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ActionParameter{
-    String(String),
-    Link(String)
+    String(String, Position),
+    Link(String, Position)
+}
+
+impl ActionParameter{
+    pub fn new(parameter:&str)->ActionParameter{
+        ActionParameter::String(parameter.to_owned(), Position::unknown())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ActionRequest{
     pub name:String,
+    pub position:Position,
     pub parameters: Vec<ActionParameter>
 }
 
@@ -47,7 +82,7 @@ impl<'a,T,E> TryActionParametersInto<T,E>  for ActionParametersSlice<'a> where T
         }
         else{
             match &self.0[0]{
-                ActionParameter::String(x)=>{
+                ActionParameter::String(x,_)=>{
                     let v:T = T::try_parameter_from(&x)?;
                     self.0=&self.0[1..];
                     Ok(v)
@@ -66,7 +101,7 @@ mod tests{
 
     #[test]
     fn parameters_into_i32() -> Result<(), Box<dyn std::error::Error>>{
-        let v = [ActionParameter::String("123".to_owned()),ActionParameter::String("234".to_owned())];
+        let v = [ActionParameter::new("123"),ActionParameter::new("234")];
         let mut par = ActionParametersSlice(&v[..]);
         let x:i32=par.try_parameters_into(&mut ())?;
         assert_eq!(x,123);
@@ -76,7 +111,7 @@ mod tests{
     }
     #[test]
     fn parameters_into_str() -> Result<(), Box<dyn std::error::Error>>{
-        let v = [ActionParameter::String("123".to_owned()),ActionParameter::String("234".to_owned())];
+        let v = [ActionParameter::new("123"),ActionParameter::new("234")];
         let mut par = ActionParametersSlice(&v[..]);
         let x:String=par.try_parameters_into(&mut ())?;
         assert_eq!(x,"123");

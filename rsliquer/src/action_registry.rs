@@ -155,7 +155,7 @@ mod tests{
     fn function2_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32,y:i32| x*y;
         //let f:Function1<i32,i32> = Function1(Box::new(a));
-        let result = Function2(Box::new(a)).call_action(Value::Integer(2),vec![ActionParameter::String("3".to_owned())])?;
+        let result = Function2(Box::new(a)).call_action(Value::Integer(2),vec![ActionParameter::new("3")])?;
         assert_eq!(result, Value::Integer(6));
         Ok(())
     }
