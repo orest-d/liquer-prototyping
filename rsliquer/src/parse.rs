@@ -12,29 +12,42 @@ use nom::sequence::pair;
 
 use crate::query::{ActionParameter, ActionRequest, Position};
 
+
+
 type Span<'a> = LocatedSpan<&'a str>;
 
-fn identifier(text:&str) ->IResult<&str, String>{
+impl<'a> From<Span<'a>> for Position{
+    fn from(span:Span<'a>)->Position{
+        Position{
+            offset:span.location_offset(),
+            line:span.location_line(),
+            column:span.get_utf8_column()
+        }
+    }
+}
+
+fn identifier(text:Span) ->IResult<Span, String>{
     let (text, a) =take_while1(|c| {is_alphabetic(c as u8)||c=='_'})(text)?;
     let (text, b) =take_while(|c| {is_alphanumeric(c as u8)||c=='_'})(text)?;
 
     Ok((text, format!("{}{}",a,b)))
 }
-fn parameter(text:&str) ->IResult<&str, String>{
+fn parameter(text:Span) ->IResult<Span, String>{
     let (text, par) =take_while(|c| {c!='-'&&c!='/'})(text)?;
 
-    Ok((text, par.to_owned()))
+    Ok((text, par.to_string()))
 }
 
 
-fn parse_action(text:&str) ->IResult<&str, ActionRequest>{
+fn parse_action(text:Span) ->IResult<Span, ActionRequest>{
+    let position:Position = text.into();
     let (text, name) =identifier(text)?;
     let (text, p) =many0(pair(tag("-"),parameter))(text)?;
 
-    Ok((text, ActionRequest{name:name, position:Position::unknown(), parameters:p.iter().map(|x| ActionParameter::new(&x.1)).collect()}))
+    Ok((text, ActionRequest{name:name, position, parameters:p.iter().map(|x| ActionParameter::new(&x.1)).collect()}))
 }
 
-fn parse_action_path(text:&str) ->IResult<&str, Vec<ActionRequest>>{
+fn parse_action_path(text:Span) ->IResult<Span, Vec<ActionRequest>>{
     separated_list(tag("/"), parse_action)(text)
 }
 
@@ -45,7 +58,7 @@ mod tests{
 
     #[test]
     fn parse_action_test() -> Result<(), Box<dyn std::error::Error>>{
-        let (_remainder, action)  = parse_action("abc-def")?;
+        let (_remainder, action)  = parse_action(Span::new("abc-def"))?;
         assert_eq!(action.name,"abc");
         assert_eq!(action.parameters.len(),1);
         match &action.parameters[0]{
