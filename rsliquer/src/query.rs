@@ -1,6 +1,5 @@
 use std::result::Result;
 use std::fmt::Display;
-use std::option::Option;
 use crate::error::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,6 +38,10 @@ impl ActionParameter{
     pub fn new(parameter:&str)->ActionParameter{
         ActionParameter::String(parameter.to_owned(), Position::unknown())
     }
+    pub fn new_parsed(parameter:String, position:Position)->ActionParameter{
+        ActionParameter::String(parameter, position)
+    }
+
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,7 +55,7 @@ pub struct ActionRequest{
 pub struct ActionParametersSlice<'a>(pub &'a [ActionParameter]);
 
 pub trait Environment<T>{
-    fn eval(&mut self,query:&str)->Result<T,Error>;
+    fn eval(&mut self, input:T, query:&str)->Result<T,Error>;
 }
 
 pub trait TryActionParametersInto<T,E>{
@@ -60,17 +63,17 @@ pub trait TryActionParametersInto<T,E>{
 }
 
 pub trait TryParameterFrom where Self: std::marker::Sized{
-    fn try_parameter_from(text:&str)->Result<Self,Error>;
+    fn try_parameter_from(text:&str)->Result<Self,String>;
 }
 
 impl TryParameterFrom for i32{
-    fn try_parameter_from(text:&str)->Result<Self,Error>{
-       text.parse().map_err(|e| Error::ParameterError{message:format!("{}",e)})
+    fn try_parameter_from(text:&str)->Result<Self,String>{
+       text.parse().map_err(|_| format!("Can't parse '{}' as integer",text))
     }
 }
 
 impl TryParameterFrom for String{
-    fn try_parameter_from(text:&str)->Result<Self,Error>{
+    fn try_parameter_from(text:&str)->Result<Self,String>{
         Ok(text.to_owned())
     }
 }
@@ -82,8 +85,8 @@ impl<'a,T,E> TryActionParametersInto<T,E>  for ActionParametersSlice<'a> where T
         }
         else{
             match &self.0[0]{
-                ActionParameter::String(x,_)=>{
-                    let v:T = T::try_parameter_from(&x)?;
+                ActionParameter::String(x, position)=>{
+                    let v:T = T::try_parameter_from(&x).map_err(|message| Error::ParameterError{message, position:position.clone()})?;
                     self.0=&self.0[1..];
                     Ok(v)
                 },

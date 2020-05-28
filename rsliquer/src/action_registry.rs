@@ -7,8 +7,8 @@ use core::fmt::Display;
 use std::ops::Fn;
 use std::collections::HashMap;
 
-trait CallableAction<T>{
-    fn call_action(&self, input:T, arguments:Vec<ActionParameter>) -> Result<T, Error>;
+pub trait CallableAction<T>{
+    fn call_action(&self, input:T, arguments:&Vec<ActionParameter>) -> Result<T, Error>;
 }
 /*
 impl<T,In,Out> CallableAction<T> for Fn(In)->Out
@@ -36,7 +36,7 @@ where
     <i32 as std::convert::TryInto<T>>::Error:Display,
     <T as std::convert::TryInto<i32>>::Error:Display
     {
-    fn call_action(&self, input:T, _arguments:Vec<ActionParameter>) -> Result<T, Error>{
+    fn call_action(&self, input:T, _arguments:&Vec<ActionParameter>) -> Result<T, Error>{
         let f_input:i32 = input.try_into()
         .map_err(|e|
             Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
@@ -70,7 +70,7 @@ where
     Out:Into<T>,
     <T as std::convert::TryInto<In>>::Error:Display
     {
-    fn call_action(&self, input:T, _arguments:Vec<ActionParameter>) -> Result<T, Error>{
+    fn call_action(&self, input:T, _arguments:&Vec<ActionParameter>) -> Result<T, Error>{
         let f_input:In = input.try_into()
         .map_err(|e|
             Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
@@ -88,7 +88,7 @@ where
     Out:Into<T>,
     <T as std::convert::TryInto<In1>>::Error:Display
     {
-    fn call_action(&self, input:T, arguments:Vec<ActionParameter>) -> Result<T, Error>{
+    fn call_action(&self, input:T, arguments:&Vec<ActionParameter>) -> Result<T, Error>{
         let a1:In1 = input.try_into()
         .map_err(|e|
             Error::ConversionError{message:format!("Input argument conversion failed; {}",e)})?;
@@ -119,7 +119,7 @@ impl<T> HashMapActionRegistry<T>{
         ns_registry.insert(name, action);
     }
 
-    pub fn call(&self, ns:&str, name:&str, input:T, arguments:Vec<ActionParameter>)->Result<T, Error>{
+    pub fn call(&self, ns:&str, name:&str, input:T, arguments:&Vec<ActionParameter>)->Result<T, Error>{
         self.0.get(ns)
         .ok_or_else(|| Error::ActionNotRegistered{message:format!("Action {} not registered in namespace {}; no such namespace",name,ns)})
         .and_then(
@@ -130,6 +130,19 @@ impl<T> HashMapActionRegistry<T>{
     }
 }
 
+impl<T> Environment<T> for HashMapActionRegistry<T>{
+    fn eval(&mut self, input:T, query:&str)->Result<T,Error>{
+        let path = crate::parse::parse_query(query)?;
+
+        let mut value = input;
+        for action_request in path{
+            value = self.call("root", &action_request.name, value, &action_request.parameters)?
+        }
+        Ok(value)
+    }
+}
+
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -138,7 +151,7 @@ mod tests{
     #[test]
     fn closure_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
-        let result = a.call_action(Value::Integer(2),vec![])?;
+        let result = a.call_action(Value::Integer(2),&vec![])?;
         assert_eq!(result, Value::Integer(4));
         Ok(())
     }
@@ -147,7 +160,7 @@ mod tests{
     fn function1_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
         //let f:Function1<i32,i32> = Function1(Box::new(a));
-        let result = Function1(Box::new(a)).call_action(Value::Integer(2),vec![])?;
+        let result = Function1(Box::new(a)).call_action(Value::Integer(2),&vec![])?;
         assert_eq!(result, Value::Integer(4));
         Ok(())
     }
@@ -155,7 +168,7 @@ mod tests{
     fn function2_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32,y:i32| x*y;
         //let f:Function1<i32,i32> = Function1(Box::new(a));
-        let result = Function2(Box::new(a)).call_action(Value::Integer(2),vec![ActionParameter::new("3")])?;
+        let result = Function2(Box::new(a)).call_action(Value::Integer(2),&vec![ActionParameter::new("3")])?;
         assert_eq!(result, Value::Integer(6));
         Ok(())
     }
@@ -173,8 +186,19 @@ mod tests{
         let mut registry = HashMapActionRegistry::<Value>::new();
         let a = |x:i32| x*x;
         registry.register_callable_action("root", "test", Box::new(Function1(Box::new(a))));
-        let result = registry.call("root", "test", Value::Integer(2), vec![])?;
+        let result = registry.call("root", "test", Value::Integer(2), &vec![])?;
         assert_eq!(result, Value::Integer(4));
+        Ok(())   
+    }
+    #[test]
+    fn test_eval()->Result<(),Box<dyn std::error::Error>>{
+        let mut registry = HashMapActionRegistry::<Value>::new();
+        let square = |x:i32| x*x;
+        let add = |x:i32,y:i32| x+y;
+        registry.register_callable_action("root", "square", Box::new(Function1(Box::new(square))));
+        registry.register_callable_action("root", "add", Box::new(Function2(Box::new(add))));
+        let result = registry.eval(Value::Integer(2),"square/add-10")?;
+        assert_eq!(result, Value::Integer(14));
         Ok(())   
     }
 }

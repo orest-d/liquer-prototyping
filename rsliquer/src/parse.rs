@@ -11,8 +11,7 @@ use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
 
 use crate::query::{ActionParameter, ActionRequest, Position};
-
-
+use crate::error::Error;
 
 type Span<'a> = LocatedSpan<&'a str>;
 
@@ -32,10 +31,11 @@ fn identifier(text:Span) ->IResult<Span, String>{
 
     Ok((text, format!("{}{}",a,b)))
 }
-fn parameter(text:Span) ->IResult<Span, String>{
+fn parameter(text:Span) ->IResult<Span, ActionParameter>{
+    let position:Position = text.into();
     let (text, par) =take_while(|c| {c!='-'&&c!='/'})(text)?;
 
-    Ok((text, par.to_string()))
+    Ok((text, ActionParameter::new_parsed(par.to_string(), position)))
 }
 
 
@@ -44,12 +44,23 @@ fn parse_action(text:Span) ->IResult<Span, ActionRequest>{
     let (text, name) =identifier(text)?;
     let (text, p) =many0(pair(tag("-"),parameter))(text)?;
 
-    Ok((text, ActionRequest{name:name, position, parameters:p.iter().map(|x| ActionParameter::new(&x.1)).collect()}))
+    Ok((text, ActionRequest{name:name, position, parameters:p.iter().map(|x| x.1.clone()).collect()}))
 }
 
-fn parse_action_path(text:Span) ->IResult<Span, Vec<ActionRequest>>{
+fn parse_action_path(text:Span) -> IResult<Span, Vec<ActionRequest>>{
     separated_list(tag("/"), parse_action)(text)
 }
+
+pub fn parse_query(query:&str)-> Result<Vec<ActionRequest>, Error>{
+    let (remainder, path)  = parse_action_path(Span::new(query)).map_err(|e| Error::General{message:format!("Parse error {}",e)})?;
+    if remainder.fragment().len()>0{
+        Err(Error::ParseError{message:format!("Can't parse query completely: '{}'",remainder.fragment()), position:remainder.into()})
+    }
+    else{
+        Ok(path)
+    }
+}
+
 
 #[cfg(test)]
 mod tests{
@@ -67,4 +78,24 @@ mod tests{
         }
         Ok(())
     }
+    #[test]
+    fn parse_path_test() -> Result<(), Box<dyn std::error::Error>>{
+        let (remainder, path)  = parse_action_path(Span::new("abc-def/xxx-123"))?;
+        println!("REMAINDER: {:#?}",remainder);
+        println!("PATH:      {:#?}",path);
+        assert_eq!(remainder.fragment().len(),0);
+        assert_eq!(remainder.to_string().len(),0);
+        Ok(())
+    }
+    #[test]
+    fn parse_query_test() -> Result<(), Error>{
+        let path  = parse_query("")?;
+        assert_eq!(path.len(),0);
+        let path  = parse_query("abc-def")?;
+        assert_eq!(path.len(),1);
+        let path  = parse_query("abc-def/xxx-123")?;
+        assert_eq!(path.len(),2);
+        Ok(())
+    }
+
 }
