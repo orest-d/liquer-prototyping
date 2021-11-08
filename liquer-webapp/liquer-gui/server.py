@@ -9,6 +9,7 @@ import liquer.ext.basic
 import liquer.ext.meta
 import liquer.ext.lq_pandas # Add pandas support to liquer so that the dataframe conversions work
 from liquer.store import web_mount_folder
+from liquer.cache import set_cache, MemoryCache
 
 web_mount_folder("gui","dist/liquer/web/gui")
 ### Create Flask app and register LiQuer blueprint
@@ -16,12 +17,14 @@ from flask import Flask
 import liquer.server.blueprint as bp
 app = Flask(__name__)
 
+set_cache(MemoryCache())
+
 url_prefix='/liquer'
 app.register_blueprint(bp.app, url_prefix=url_prefix)
 
 
 
-@first_command
+@first_command(volatile=True)
 def hello():
     return "Hello"
 
