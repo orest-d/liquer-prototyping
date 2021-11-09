@@ -49,11 +49,11 @@ export default {
     search: "",
   }),
   methods: {
-    info(message, reason = {}) {
-      this.message_event({ status: "INFO", message, reason });
+    info(message, reason = null, query = null) {
+      this.message_event({ status: "INFO", message, reason, query });
     },
-    error(message, reason = {}) {
-      this.message_event({ status: "ERROR", message, reason });
+    error(message, reason = null, query = null) {
+      this.message_event({ status: "ERROR", message, reason, query });
     },
     message_event(m) {
       this.$emit("message-event", m);

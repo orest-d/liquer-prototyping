@@ -12,7 +12,10 @@
 
     <v-main>
       <!--  -->
+      <Content :metadata="metadata"  @message-event="message_event($event)"/>
+
       <Commands
+        v-if="false"
         :liquer_url="liquer_url"
         @message-event="message_event($event)"
       />
@@ -24,6 +27,7 @@
 <script>
 import StatusBar from "./components/StatusBar";
 import Commands from "./components/Commands";
+import Content from "./components/Content";
 
 export default {
   name: "App",
@@ -31,6 +35,7 @@ export default {
   components: {
     StatusBar,
     Commands,
+    Content
   },
 
   data: () => ({
