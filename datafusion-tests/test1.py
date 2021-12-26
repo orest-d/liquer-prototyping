@@ -46,6 +46,9 @@ SELECT * FROM a WHERE a>1
 print(df.show())
 
 table = pyarrow.Table.from_batches(df.collect())
+print("To Pandas")
+print(table.to_pandas())
+
 pq.write_table(table, 'result.parquet')
 
 df = pd.read_parquet("result.parquet")
