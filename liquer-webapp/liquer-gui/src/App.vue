@@ -12,6 +12,17 @@
 
     <v-main>
       <!--  -->
+      <CodeEditor theme="" class="github_dark" :language_selector="true" read_only="false" v-model="code"></CodeEditor>
+      <br/>
+      <br/>
+		<highlight-code lang="python" v-model="code">
+            print("Hmm...")
+		</highlight-code>
+      <br/>
+      <br/>
+       <codemirror :value="code" :options="cmOptions" />
+
+
       <Content :metadata="metadata"  @message-event="message_event($event)"/>
 
       <Commands
@@ -28,6 +39,7 @@
 import StatusBar from "./components/StatusBar";
 import Commands from "./components/Commands";
 import Content from "./components/Content";
+import CodeEditor from 'simple-code-editor';
 
 export default {
   name: "App",
@@ -35,7 +47,8 @@ export default {
   components: {
     StatusBar,
     Commands,
-    Content
+    Content,
+    CodeEditor,
   },
 
   data: () => ({
@@ -50,6 +63,15 @@ export default {
     url_submit_prefix: "/liquer/submit/",
     url_remove_prefix: "/liquer/cache/remove/",
     url_cache_meta_prefix: "/liquer/cache/meta/",
+    code:"def hello():\n  print('hello')\n",
+    cmOptions:{
+        tabSize: 4,
+        //mode: 'text/x-python',
+        mode:{name: 'python'},
+        theme: 'base16-dark',
+        lineNumbers: true,
+        line: true,
+    },
 
     liquer_url: "/liquer",
     html: "",

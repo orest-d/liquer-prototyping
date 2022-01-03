@@ -1,5 +1,5 @@
 {
-  "name": "liquer-gui",
+  "name": "liquer-gui-edit-prototype",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,12 +9,9 @@
   },
   "dependencies": {
     "core-js": "^3.6.5",
-    "highlight.js": "^9.18.5",
-    "simple-code-editor": "^1.1.1",
+    "prismjs": "^1.25.0",
     "vue": "^2.6.11",
-    "vue-codemirror": "^4.0.6",
-    "vue-highlight.js": "^3.1.0",
-    "vue-resource": "^1.5.3",
+    "vue-prism-editor": "^1.3.0",
     "vuetify": "^2.4.0"
   },
   "devDependencies": {
@@ -26,7 +23,7 @@
     "eslint-plugin-vue": "^6.2.2",
     "sass": "~1.32.0",
     "sass-loader": "^10.0.0",
-    "vue-cli-plugin-vuetify": "~2.4.3",
+    "vue-cli-plugin-vuetify": "^2.4.5",
     "vue-template-compiler": "^2.6.11",
     "vuetify-loader": "^1.7.0"
   },
