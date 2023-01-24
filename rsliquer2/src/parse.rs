@@ -35,7 +35,7 @@ fn parameter(text:Span) ->IResult<Span, ActionParameter>{
     let position:Position = text.into();
     let (text, par) =take_while(|c| {c!='-'&&c!='/'})(text)?;
 
-    Ok((text, ActionParameter::new_parsed(par.to_string(), position)))
+    Ok((text, ActionParameter::new_string(par.to_string()).with_position(position)))
 }
 
 
