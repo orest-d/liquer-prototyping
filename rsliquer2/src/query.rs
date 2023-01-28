@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use std::borrow::Cow;
 use std::fmt::Display;
 use std::ops::Add;
 
@@ -91,20 +92,27 @@ pub struct ResourceName {
 
 #[allow(dead_code)]
 impl ResourceName {
+    /// Create a new resource name (without a position)
     pub fn new(name: String) -> Self {
         Self {
             name: name,
             position: Position::unknown(),
         }
     }
+    /// Equip the resource name with a position
     pub fn with_position(self, position: Position) -> Self {
         Self {
             position: position,
             ..self
         }
     }
+    /// Encode resource name as a string
     pub fn encode(&self) -> &str {
         &self.name
+    }
+    /// Return file extension if present, None otherwise.
+    pub fn extension(self) -> Option<String> {
+        self.name.split(".").last().map(|s| s.to_owned())
     }
 }
 
@@ -413,11 +421,162 @@ impl ResourceQuerySegment {
             format!("{rqs}{query}")
         }
     }
+
+    pub fn filename(&self) -> Option<ResourceName> {
+        self.query.last().cloned()
+    }
 }
 
 impl Display for ResourceQuerySegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.encode())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum QuerySegment {
+    Resource(ResourceQuerySegment),
+    Transform(TransformQuerySegment),
+}
+
+/// Query is a sequence of query segments.
+/// Typically this will be a resource and and/or a transformation applied to a resource.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct Query {
+    segments: Vec<QuerySegment>,
+    absolute: bool,
+}
+
+#[allow(dead_code)]
+impl Query {
+    /// Return filename if present, None otherwise.
+    pub fn filename(&self) -> Option<ResourceName> {
+        match self.segments.last() {
+            None => None,
+            Some(QuerySegment::Transform(tqs)) => tqs.filename.clone(),
+            Some(QuerySegment::Resource(rqs)) => rqs.filename(),
+        }
+    }
+
+    /// Return file extension if present, None otherwise.
+    pub fn extension(&self) -> Option<String> {
+        self.filename().and_then(|x| x.extension())
+    }
+    /// Returns true if the query is empty, i.e. has no segments and thus is equivalent to an empty string.
+    pub fn is_empty(&self) -> bool {
+        self.segments.is_empty()
+    }
+
+    /// Returns true if the query is a pure transformation query - i.e. a sequence of actions.
+    pub fn is_transform_query(&self) -> bool {
+        self.segments.len() == 1
+            && match &self.segments[0] {
+                QuerySegment::Transform(_) => true,
+                _ => false,
+            }
+    }
+
+    /// Returns TransformQuerySegment if the query is a pure transformation query, None otherwise.
+    pub fn transform_query(&self) -> Option<TransformQuerySegment> {
+        if self.segments.len() == 1 {
+            match &self.segments[0] {
+                QuerySegment::Transform(tqs) => Some(tqs.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns true if the query is a pure resource query
+    pub fn is_resource_query(&self) -> bool {
+        self.segments.len() == 1
+            && match &self.segments[0] {
+                QuerySegment::Resource(_) => true,
+                _ => false,
+            }
+    }
+
+    /// Returns ResourceQuerySegment if the query is a pure resource query, None otherwise.
+    pub fn resource_query(&self) -> Option<ResourceQuerySegment> {
+        if self.segments.len() == 1 {
+            match &self.segments[0] {
+                QuerySegment::Resource(rqs) => Some(rqs.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns true if the query is a single action request.
+    pub fn is_action_request(&self) -> bool {
+        self.transform_query()
+            .map_or(false, |x| x.is_action_request())
+    }
+
+    /// Returns ActionRequest if the query is a single action request, None otherwise.
+    pub fn action(&self) -> Option<ActionRequest> {
+        self.transform_query().and_then(|x| x.action())
+    }
+
+    fn up_to_last_segment(&self) -> Vec<QuerySegment> {
+        let mut seg = vec![];
+        self.segments[0..self.segments.len() - 1].clone_into(&mut seg);
+        seg
+    }
+
+    /// Return tuple of (predecessor, remainder).
+    /// Remainder is a last element (action or filename) or None if not available.
+    /// Predecessor is a query without the remainder (or None).
+    pub fn predecessor(&self) -> (Option<Query>, Option<QuerySegment>) {
+        match &self.segments.last() {
+            None => (None, None),
+            Some(QuerySegment::Resource(rqs)) => (
+                Some(Query {
+                    segments: self.up_to_last_segment(),
+                    absolute: self.absolute,
+                }),
+                Some(QuerySegment::Resource(rqs.clone())),
+            ),
+            Some(QuerySegment::Transform(tqs)) => {
+                let (p, r) = tqs.predecessor();
+                if p.as_ref().map_or(true, |x| x.is_empty()) {
+                    (
+                        Some(Query {
+                            segments: self.up_to_last_segment(),
+                            absolute: self.absolute,
+                        }),
+                        r.map(|x| QuerySegment::Transform(x)),
+                    )
+                } else {
+                    let mut seg = self.up_to_last_segment();
+                    seg.push(QuerySegment::Transform(p.unwrap()));
+                    (
+                        Some(Query {
+                            segments: seg,
+                            absolute: self.absolute,
+                        }),
+                        r.map(|x| QuerySegment::Transform(x)),
+                    )
+                }
+            }
+        }
+    }
+    /// Query without the filename.
+    pub fn without_filename(self) -> Query {
+        if (&self).filename().is_none() {
+            self
+        } else {
+            if let (Some(p), _) = self.predecessor() {
+                p
+            } else {
+                Query {
+                    segments: vec![],
+                    absolute: self.absolute,
+                }
+            }
+        }
     }
 }
 
