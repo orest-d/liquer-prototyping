@@ -195,7 +195,7 @@ impl Display for HeaderParameter {
 /// Header may contain name (string), level (integer) and parameters (list of strings).
 /// The header parameters may influence how the query is interpreted.
 /// The interpretation of the header parameters depends on the context object.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct SegmentHeader {
     name: String,
     level: usize,
@@ -253,7 +253,7 @@ impl Display for SegmentHeader {
 }
 
 /// Query segment representing a transformation, i.e. a sequence of actions applied to a state.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct TransformQuerySegment {
     header: Option<SegmentHeader>,
     query: Vec<ActionRequest>,
@@ -368,6 +368,54 @@ impl Add<Option<TransformQuerySegment>> for TransformQuerySegment {
 }
 
 impl Display for TransformQuerySegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.encode())
+    }
+}
+
+/// Query segment representing a resource, i.e. path to a file in a store.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+struct ResourceQuerySegment {
+    header: Option<SegmentHeader>,
+    query: Vec<ResourceName>,
+}
+
+#[allow(dead_code)]
+impl ResourceQuerySegment {
+    /// Return resource query position
+    pub fn position(&self) -> Position {
+        if let Some(header) = &self.header {
+            header.position.to_owned()
+        } else {
+            if self.query.is_empty() {
+                Position::unknown()
+            } else {
+                self.query[0].position.to_owned()
+            }
+        }
+    }
+
+    /// Path to the resource as a string.
+    /// This is typically interpreted as a resource key in a Store object.
+    pub fn path(&self) -> String {
+        self.query.iter().map(|x| x.encode()).join("/")
+    }
+
+    pub fn encode(&self) -> String {
+        let mut rqs = self.header.as_ref().map_or("".to_owned(), |x| x.encode());
+        if !rqs.is_empty() {
+            rqs.push('/');
+        }
+        if self.query.is_empty() {
+            rqs
+        } else {
+            let query = self.path();
+            format!("{rqs}{query}")
+        }
+    }
+}
+
+impl Display for ResourceQuerySegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.encode())
     }
