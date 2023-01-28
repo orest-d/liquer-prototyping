@@ -439,6 +439,21 @@ enum QuerySegment {
     Transform(TransformQuerySegment),
 }
 
+impl QuerySegment {
+    pub fn encode(&self)->String{
+        match self{
+            QuerySegment::Resource(rqs) => rqs.encode(),
+            QuerySegment::Transform(tqs) => tqs.encode(),
+        }
+    }
+}
+
+impl Display for QuerySegment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.encode())
+    }
+}
+
 /// Query is a sequence of query segments.
 /// Typically this will be a resource and and/or a transformation applied to a resource.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -575,6 +590,42 @@ impl Query {
                     segments: vec![],
                     absolute: self.absolute,
                 }
+            }
+        }
+    }
+
+    /// Make a shortened version of the at most n characters of a query for printout purposes
+    pub fn short(self, n:usize) -> String{
+        if let (_, Some(r)) = self.predecessor(){
+            r.encode()
+        }
+        else{
+            let q = self.encode();
+            if q.len() > n{
+                format!("...{}", &q[q.len()-n..])
+            }
+            else{
+                q
+            }
+        }
+    }
+
+    pub fn encode(self) -> String{
+        let q = self.segments.iter().map(|x| x.encode()).join("/");
+        if self.is_resource_query(){
+            if !q.starts_with('-'){
+                format!("-R/{q}")
+            }
+            else{
+                q
+            }
+        }
+        else{
+            if self.absolute{
+                format!("/{q}")
+            }
+            else{
+                q
             }
         }
     }
