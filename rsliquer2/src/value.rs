@@ -3,7 +3,7 @@ use serde_json;
 use std::result::Result;
 
 use crate::error::Error;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Value{

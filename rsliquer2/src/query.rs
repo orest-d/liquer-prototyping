@@ -1,8 +1,6 @@
-use crate::error::Error;
 use itertools::Itertools;
 use std::fmt::Display;
 use std::ops::Add;
-use std::result::Result;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
@@ -11,6 +9,7 @@ pub struct Position {
     pub column: usize,
 }
 
+#[allow(dead_code)]
 impl Position {
     pub fn new(offset: usize, line: u32, column: usize) -> Self {
         Position {
@@ -56,6 +55,7 @@ pub enum ActionParameter {
     Link(String, Position), // TODO: Link should have a query inside
 }
 
+#[allow(dead_code)]
 impl ActionParameter {
     pub fn new_string(parameter: String) -> ActionParameter {
         ActionParameter::String(parameter, Position::unknown())
@@ -89,6 +89,7 @@ pub struct ResourceName {
     pub position: Position,
 }
 
+#[allow(dead_code)]
 impl ResourceName {
     pub fn new(name: String) -> Self {
         Self {
@@ -120,6 +121,7 @@ pub struct ActionRequest {
     pub position: Position,
 }
 
+#[allow(dead_code)]
 impl ActionRequest {
     pub fn new(name: String) -> ActionRequest {
         ActionRequest {
@@ -164,6 +166,7 @@ pub struct HeaderParameter {
     pub position: Position,
 }
 
+#[allow(dead_code)]
 impl HeaderParameter {
     pub fn new(value: String) -> HeaderParameter {
         HeaderParameter {
@@ -201,6 +204,7 @@ struct SegmentHeader {
     position: Position,
 }
 
+#[allow(dead_code)]
 impl SegmentHeader {
     /// Returns true if the header does not contain any data,
     /// I.e. trivial header has no name, level is 0 and no parameters.
@@ -209,8 +213,14 @@ impl SegmentHeader {
         self.name.is_empty() && self.level == 0 && self.parameters.len() == 0
     }
 
-    pub fn new()->SegmentHeader {
-        SegmentHeader {name: "".to_owned(), level: 0, parameters:vec![], resource:false, position: Position::unknown()}
+    pub fn new() -> SegmentHeader {
+        SegmentHeader {
+            name: "".to_owned(),
+            level: 0,
+            parameters: vec![],
+            resource: false,
+            position: Position::unknown(),
+        }
     }
     pub fn with_position(self, position: Position) -> Self {
         Self {
@@ -250,6 +260,7 @@ struct TransformQuerySegment {
     filename: Option<ResourceName>,
 }
 
+#[allow(dead_code)]
 impl TransformQuerySegment {
     pub fn predecessor(&self) -> (Option<TransformQuerySegment>, Option<TransformQuerySegment>) {
         if let Some(filename) = &self.filename {
@@ -262,7 +273,7 @@ impl TransformQuerySegment {
                 Some(TransformQuerySegment {
                     header: self.header.clone(),
                     query: vec![],
-                    filename: self.filename.clone(),
+                    filename: Some(filename.clone()),
                 }),
             )
         } else {
@@ -287,76 +298,71 @@ impl TransformQuerySegment {
         }
     }
 
-    pub fn is_empty(&self) -> bool{
+    pub fn is_empty(&self) -> bool {
         self.query.is_empty() && self.filename.is_none()
     }
 
-    pub fn is_filename(&self)-> bool{
+    pub fn is_filename(&self) -> bool {
         self.query.is_empty() && self.filename.is_some()
     }
 
-    pub fn is_action_request(&self) -> bool{
+    pub fn is_action_request(&self) -> bool {
         self.query.len() == 1 && self.filename.is_none()
     }
 
-    pub fn action(&self) -> Option<ActionRequest>{
-        if self.is_action_request(){
+    pub fn action(&self) -> Option<ActionRequest> {
+        if self.is_action_request() {
             Some(self.query[0].clone())
-        }
-        else{
+        } else {
             None
         }
     }
 
-    pub fn encode(&self) -> String{
+    pub fn encode(&self) -> String {
         let pure_query = self.query.iter().map(|x| x.encode()).join("/");
-        let query = if let Some(filename) = &self.filename{
+        let query = if let Some(filename) = &self.filename {
             if pure_query.is_empty() {
                 filename.encode().to_owned()
+            } else {
+                format!("{}/{}", pure_query, filename.encode())
             }
-            else{
-                format!("{}/{}", pure_query, filename.encode()) 
-            }
-        }
-        else {
+        } else {
             pure_query
         };
 
-        if let Some(header) = &self.header{
+        if let Some(header) = &self.header {
             if query.is_empty() {
                 header.encode()
+            } else {
+                format!("{}/{}", header.encode(), query)
             }
-            else{
-                format!("{}/{}",header.encode(),query)
-            }
-        }
-        else{
+        } else {
             query
         }
     }
 }
 
-impl Add for TransformQuerySegment{
+impl Add for TransformQuerySegment {
     type Output = TransformQuerySegment;
 
     fn add(self, rhs: Self) -> Self::Output {
         let mut q = self.query.clone();
         q.extend(rhs.query.iter().map(|x| x.clone()));
-        TransformQuerySegment{
+        TransformQuerySegment {
             header: self.header.clone(),
-            query:q,
-            filename:rhs.filename.clone(),
+            query: q,
+            filename: rhs.filename.clone(),
         }
     }
 }
 
-impl Add<Option<TransformQuerySegment>> for TransformQuerySegment{
+impl Add<Option<TransformQuerySegment>> for TransformQuerySegment {
     type Output = TransformQuerySegment;
 
     fn add(self, rhs: Option<TransformQuerySegment>) -> Self::Output {
-        match(rhs){
+        match rhs {
             Some(x) => self + x,
-            None => self
+            None => self,
         }
     }
 }
