@@ -1,6 +1,7 @@
 use crate::error::Error;
 use itertools::Itertools;
 use std::fmt::Display;
+use std::ops::Add;
 use std::result::Result;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -202,10 +203,20 @@ struct SegmentHeader {
 
 impl SegmentHeader {
     /// Returns true if the header does not contain any data,
-    /// I.e. trivial header has no name, level is 1 and no parameters.
+    /// I.e. trivial header has no name, level is 0 and no parameters.
     /// Trivial header can be both for resource and query, it does not depend on the resource flags.
     pub fn is_trivial(&self) -> bool {
-        self.name.is_empty() && self.level == 1 && self.parameters.len() == 0
+        self.name.is_empty() && self.level == 0 && self.parameters.len() == 0
+    }
+
+    pub fn new()->SegmentHeader {
+        SegmentHeader {name: "".to_owned(), level: 0, parameters:vec![], resource:false, position: Position::unknown()}
+    }
+    pub fn with_position(self, position: Position) -> Self {
+        Self {
+            position: position,
+            ..self
+        }
     }
 
     pub fn encode(&self) -> String {
@@ -226,6 +237,131 @@ impl SegmentHeader {
 }
 
 impl Display for SegmentHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.encode())
+    }
+}
+
+/// Query segment representing a transformation, i.e. a sequence of actions applied to a state.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct TransformQuerySegment {
+    header: Option<SegmentHeader>,
+    query: Vec<ActionRequest>,
+    filename: Option<ResourceName>,
+}
+
+impl TransformQuerySegment {
+    pub fn predecessor(&self) -> (Option<TransformQuerySegment>, Option<TransformQuerySegment>) {
+        if let Some(filename) = &self.filename {
+            (
+                Some(TransformQuerySegment {
+                    header: self.header.clone(),
+                    query: self.query.clone(),
+                    filename: None,
+                }),
+                Some(TransformQuerySegment {
+                    header: self.header.clone(),
+                    query: vec![],
+                    filename: self.filename.clone(),
+                }),
+            )
+        } else {
+            if self.query.is_empty() {
+                (None, None)
+            } else {
+                let mut q = vec![];
+                self.query[0..self.query.len() - 1].clone_into(&mut q);
+                (
+                    Some(TransformQuerySegment {
+                        header: self.header.clone(),
+                        query: q,
+                        filename: None,
+                    }),
+                    Some(TransformQuerySegment {
+                        header: self.header.clone(),
+                        query: vec![self.query.last().unwrap().clone()],
+                        filename: None,
+                    }),
+                )
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool{
+        self.query.is_empty() && self.filename.is_none()
+    }
+
+    pub fn is_filename(&self)-> bool{
+        self.query.is_empty() && self.filename.is_some()
+    }
+
+    pub fn is_action_request(&self) -> bool{
+        self.query.len() == 1 && self.filename.is_none()
+    }
+
+    pub fn action(&self) -> Option<ActionRequest>{
+        if self.is_action_request(){
+            Some(self.query[0].clone())
+        }
+        else{
+            None
+        }
+    }
+
+    pub fn encode(&self) -> String{
+        let pure_query = self.query.iter().map(|x| x.encode()).join("/");
+        let query = if let Some(filename) = &self.filename{
+            if pure_query.is_empty() {
+                filename.encode().to_owned()
+            }
+            else{
+                format!("{}/{}", pure_query, filename.encode()) 
+            }
+        }
+        else {
+            pure_query
+        };
+
+        if let Some(header) = &self.header{
+            if query.is_empty() {
+                header.encode()
+            }
+            else{
+                format!("{}/{}",header.encode(),query)
+            }
+        }
+        else{
+            query
+        }
+    }
+}
+
+impl Add for TransformQuerySegment{
+    type Output = TransformQuerySegment;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let mut q = self.query.clone();
+        q.extend(rhs.query.iter().map(|x| x.clone()));
+        TransformQuerySegment{
+            header: self.header.clone(),
+            query:q,
+            filename:rhs.filename.clone(),
+        }
+    }
+}
+
+impl Add<Option<TransformQuerySegment>> for TransformQuerySegment{
+    type Output = TransformQuerySegment;
+
+    fn add(self, rhs: Option<TransformQuerySegment>) -> Self::Output {
+        match(rhs){
+            Some(x) => self + x,
+            None => self
+        }
+    }
+}
+
+impl Display for TransformQuerySegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.encode())
     }
@@ -271,6 +407,8 @@ mod tests {
 
     #[test]
     fn encode_segment_header() -> Result<(), Box<dyn std::error::Error>> {
+        let head = SegmentHeader::new();
+        assert_eq!(head.encode(), "-");
         Ok(())
     }
 }
