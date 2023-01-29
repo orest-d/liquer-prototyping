@@ -204,12 +204,12 @@ impl Display for HeaderParameter {
 /// The header parameters may influence how the query is interpreted.
 /// The interpretation of the header parameters depends on the context object.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct SegmentHeader {
-    name: String,
-    level: usize,
-    parameters: Vec<HeaderParameter>,
-    resource: bool,
-    position: Position,
+pub struct SegmentHeader {
+    pub name: String,
+    pub level: usize,
+    pub parameters: Vec<HeaderParameter>,
+    pub resource: bool,
+    pub position: Position,
 }
 
 #[allow(dead_code)]
@@ -262,10 +262,10 @@ impl Display for SegmentHeader {
 
 /// Query segment representing a transformation, i.e. a sequence of actions applied to a state.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct TransformQuerySegment {
-    header: Option<SegmentHeader>,
-    query: Vec<ActionRequest>,
-    filename: Option<ResourceName>,
+pub struct TransformQuerySegment {
+    pub header: Option<SegmentHeader>,
+    pub query: Vec<ActionRequest>,
+    pub filename: Option<ResourceName>,
 }
 
 #[allow(dead_code)]
@@ -348,6 +348,11 @@ impl TransformQuerySegment {
             query
         }
     }
+
+    /// Length of query - i.e. number of actions in the query
+    fn len(&self) -> usize {
+        self.query.len()
+    }
 }
 
 impl Add for TransformQuerySegment {
@@ -383,9 +388,9 @@ impl Display for TransformQuerySegment {
 
 /// Query segment representing a resource, i.e. path to a file in a store.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct ResourceQuerySegment {
-    header: Option<SegmentHeader>,
-    query: Vec<ResourceName>,
+pub struct ResourceQuerySegment {
+    pub header: Option<SegmentHeader>,
+    pub query: Vec<ResourceName>,
 }
 
 #[allow(dead_code)]
@@ -425,6 +430,10 @@ impl ResourceQuerySegment {
     pub fn filename(&self) -> Option<ResourceName> {
         self.query.last().cloned()
     }
+
+    fn len(&self) -> usize {
+        self.query.len()
+    }
 }
 
 impl Display for ResourceQuerySegment {
@@ -434,7 +443,7 @@ impl Display for ResourceQuerySegment {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-enum QuerySegment {
+pub enum QuerySegment {
     Resource(ResourceQuerySegment),
     Transform(TransformQuerySegment),
 }
@@ -444,6 +453,12 @@ impl QuerySegment {
         match self {
             QuerySegment::Resource(rqs) => rqs.encode(),
             QuerySegment::Transform(tqs) => tqs.encode(),
+        }
+    }
+    pub fn len(&self) -> usize {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.len(),
+            QuerySegment::Transform(tqs) => tqs.len(),
         }
     }
 }
@@ -458,8 +473,8 @@ impl Display for QuerySegment {
 /// Typically this will be a resource and and/or a transformation applied to a resource.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Query {
-    segments: Vec<QuerySegment>,
-    absolute: bool,
+    pub segments: Vec<QuerySegment>,
+    pub absolute: bool,
 }
 
 #[allow(dead_code)]
@@ -623,6 +638,9 @@ impl Query {
                 q
             }
         }
+    }
+    pub fn len(&self)->usize{
+        self.segments.len()
     }
 }
 
