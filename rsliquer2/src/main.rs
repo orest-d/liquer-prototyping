@@ -13,6 +13,7 @@ mod error;
 mod query;
 mod parse;
 mod action_registry;
+pub mod plan;
 
 use std::collections::HashMap;
 

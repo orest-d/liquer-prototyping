@@ -121,8 +121,8 @@ mod tests{
     #[test]
     fn closure_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
-        let result = a.call_action(Value::Integer(2),&vec![])?;
-        assert_eq!(result, Value::Integer(4));
+        let result = a.call_action(Value::I32(2),&vec![])?;
+        assert_eq!(result, Value::I32(4));
         Ok(())
     }
 
@@ -130,8 +130,8 @@ mod tests{
     fn function1_call_action()-> Result<(), Box<dyn std::error::Error>>{
         let a = |x:i32| x*x;
         //let f:Function1<i32,i32> = Function1(Box::new(a));
-        let result = Function1(Box::new(a)).call_action(Value::Integer(2),&vec![])?;
-        assert_eq!(result, Value::Integer(4));
+        let result = Function1(Box::new(a)).call_action(Value::I32(2),&vec![])?;
+        assert_eq!(result, Value::I32(4));
         Ok(())
     }
     #[test]
@@ -139,8 +139,8 @@ mod tests{
         let mut registry = HashMapActionRegistry::<Value>::new();
         let a = |x:i32| x*x;
         registry.register_callable_action("root", "test", Box::new(Function1(Box::new(a))));
-        let result = registry.call("root", "test", Value::Integer(2), &vec![])?;
-        assert_eq!(result, Value::Integer(4));
+        let result = registry.call("root", "test", Value::I32(2), &vec![])?;
+        assert_eq!(result, Value::I32(4));
         Ok(())   
     }
 }
