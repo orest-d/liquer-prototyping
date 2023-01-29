@@ -53,7 +53,7 @@ pub fn encode_token<S: AsRef<str>>(text: S) -> String {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ActionParameter {
     String(String, Position),
-    Link(String, Position), // TODO: Link should have a query inside
+    Link(Query, Position),
 }
 
 #[allow(dead_code)]
@@ -61,19 +61,19 @@ impl ActionParameter {
     pub fn new_string(parameter: String) -> ActionParameter {
         ActionParameter::String(parameter, Position::unknown())
     }
-    pub fn new_link(parameter: String) -> ActionParameter {
-        ActionParameter::Link(parameter, Position::unknown())
+    pub fn new_link(query: Query) -> ActionParameter {
+        ActionParameter::Link(query, Position::unknown())
     }
     pub fn with_position(self, position: Position) -> Self {
         match self {
             Self::String(s, _) => Self::String(s, position),
-            Self::Link(query, _) => Self::Link(query, position), // TODO: query.encode()
+            Self::Link(query, _) => Self::Link(query, position),
         }
     }
     pub fn encode(&self) -> String {
         match self {
             Self::String(s, _) => encode_token(s),
-            Self::Link(query, _) => format!("~X~{}~E", query), // TODO: query.encode()
+            Self::Link(query, _) => format!("~X~{}~E", query.encode()),
         }
     }
 }
@@ -440,8 +440,8 @@ enum QuerySegment {
 }
 
 impl QuerySegment {
-    pub fn encode(&self)->String{
-        match self{
+    pub fn encode(&self) -> String {
+        match self {
             QuerySegment::Resource(rqs) => rqs.encode(),
             QuerySegment::Transform(tqs) => tqs.encode(),
         }
@@ -457,7 +457,7 @@ impl Display for QuerySegment {
 /// Query is a sequence of query segments.
 /// Typically this will be a resource and and/or a transformation applied to a resource.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct Query {
+pub struct Query {
     segments: Vec<QuerySegment>,
     absolute: bool,
 }
@@ -595,36 +595,31 @@ impl Query {
     }
 
     /// Make a shortened version of the at most n characters of a query for printout purposes
-    pub fn short(self, n:usize) -> String{
-        if let (_, Some(r)) = self.predecessor(){
+    pub fn short(self, n: usize) -> String {
+        if let (_, Some(r)) = self.predecessor() {
             r.encode()
-        }
-        else{
+        } else {
             let q = self.encode();
-            if q.len() > n{
-                format!("...{}", &q[q.len()-n..])
-            }
-            else{
+            if q.len() > n {
+                format!("...{}", &q[q.len() - n..])
+            } else {
                 q
             }
         }
     }
 
-    pub fn encode(self) -> String{
+    pub fn encode(&self) -> String {
         let q = self.segments.iter().map(|x| x.encode()).join("/");
-        if self.is_resource_query(){
-            if !q.starts_with('-'){
+        if self.is_resource_query() {
+            if !q.starts_with('-') {
                 format!("-R/{q}")
-            }
-            else{
+            } else {
                 q
             }
-        }
-        else{
-            if self.absolute{
+        } else {
+            if self.absolute {
                 format!("/{q}")
-            }
-            else{
+            } else {
                 q
             }
         }
@@ -637,7 +632,14 @@ mod tests {
 
     #[test]
     fn encode_link_action_parameter() -> Result<(), Box<dyn std::error::Error>> {
-        let ap = ActionParameter::Link("hello".to_string(), Position::unknown());
+        let q = Query {
+            segments: vec![QuerySegment::Transform(TransformQuerySegment {
+                query: vec![ActionRequest::new("hello".to_owned())],
+                ..Default::default()
+            })],
+            absolute: false,
+        };
+        let ap = ActionParameter::Link(q, Position::unknown());
         assert_eq!(ap.encode(), "~X~hello~E");
         Ok(())
     }
@@ -652,17 +654,31 @@ mod tests {
         assert_eq!(a.encode(), "action");
         let a = ActionRequest::new("action1".to_owned());
         assert_eq!(a.encode(), "action1");
+        let q = Query {
+            segments: vec![QuerySegment::Transform(TransformQuerySegment {
+                query: vec![ActionRequest::new("hello".to_owned())],
+                ..Default::default()
+            })],
+            absolute: false,
+        };
         let a = ActionRequest {
             name: "action".to_owned(),
             position: Position::unknown(),
             parameters: vec![
-                ActionParameter::Link("hello".to_string(), Position::unknown()),
+                ActionParameter::Link(q, Position::unknown()),
                 ActionParameter::String("world".to_string(), Position::unknown()),
             ],
         };
         assert_eq!(a.encode(), "action-~X~hello~E-world");
+        let q = Query {
+            segments: vec![QuerySegment::Transform(TransformQuerySegment {
+                query: vec![ActionRequest::new("hello".to_owned())],
+                ..Default::default()
+            })],
+            absolute: false,
+        };
         let a = ActionRequest::new("action1".to_owned()).with_parameters(vec![
-            ActionParameter::new_link("hello".to_owned()),
+            ActionParameter::new_link(q),
             ActionParameter::new_string("world".to_owned()),
         ]);
         assert_eq!(a.encode(), "action1-~X~hello~E-world");
