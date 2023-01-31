@@ -16,15 +16,15 @@ pub enum Step {
     Error(String),
 }
 
-impl Step{
-    pub fn is_error(&self)->bool{
-        match self{
+impl Step {
+    pub fn is_error(&self) -> bool {
+        match self {
             Step::Error(_) => true,
             _ => false,
         }
     }
-    pub fn is_warning(&self)->bool{
-        match self{
+    pub fn is_warning(&self) -> bool {
+        match self {
             Step::Warning(_) => true,
             _ => false,
         }
@@ -97,7 +97,11 @@ impl Plan {
                     if let Some(ns) = ns.as_ref() {
                         for par in ns.iter() {
                             if !par.is_string() {
-                                plan.error(format!("Unsuported namespace {} at {}",par.encode(),par.position()));
+                                plan.error(format!(
+                                    "Unsuported namespace {} at {}",
+                                    par.encode(),
+                                    par.position()
+                                ));
                             }
                         }
                     }
@@ -134,10 +138,10 @@ impl Plan {
     fn error(&mut self, message: String) {
         self.steps.push(Step::Error(message));
     }
-    fn has_error(&self)->bool{
+    fn has_error(&self) -> bool {
         self.steps.iter().any(|x| x.is_error())
     }
-    fn has_warning(&self)->bool{
+    fn has_warning(&self) -> bool {
         self.steps.iter().any(|x| x.is_warning())
     }
 }
@@ -157,12 +161,11 @@ mod tests {
         let plan = Plan::from(&query);
         assert!(!plan.has_error());
         assert!(!plan.has_warning());
-        assert_eq!(plan.steps.len(),1);
-        if let Step::ApplyAction { ns, action } = &plan.steps[0]{
+        assert_eq!(plan.steps.len(), 1);
+        if let Step::ApplyAction { ns, action } = &plan.steps[0] {
             assert!(ns.is_none());
-            assert_eq!(action.name,"query");
-        }
-        else{
+            assert_eq!(action.name, "query");
+        } else {
             assert!(false);
         }
         Ok(())
