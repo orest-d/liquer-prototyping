@@ -1,80 +1,121 @@
-use crate::query::{Query, ActionRequest, ResourceName, QuerySegment};
+use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, ResourceName};
 
-pub enum Step{
+pub enum Step {
     Get(String),
     GetRes(Vec<ResourceName>),
     GetMeta(String),
     GetResMeta(Vec<ResourceName>),
     Evaluate(Query),
-    ApplyAction(ActionRequest),
+    ApplyAction {
+        ns: Option<Vec<ActionParameter>>,
+        action: ActionRequest,
+    },
     Filename(ResourceName),
     Info(String),
     Warning(String),
-    Error(String)
+    Error(String),
 }
 
+impl Step{
+    pub fn is_error(&self)->bool{
+        match self{
+            Step::Error(_) => true,
+            _ => false,
+        }
+    }
+    pub fn is_warning(&self)->bool{
+        match self{
+            Step::Warning(_) => true,
+            _ => false,
+        }
+    }
+}
 
-pub struct Plan{
-    query:Query,
-    steps:Vec<Step>
+pub struct Plan {
+    query: Query,
+    steps: Vec<Step>,
 }
 
 impl Plan {
-    fn from(query:&Query) -> Plan {
-        let mut plan = Plan{query:query.clone(), steps:vec![]};        
-        let (p,r)=query.predecessor();
-        match r{
+    fn from(query: &Query) -> Plan {
+        let mut plan = Plan {
+            query: query.clone(),
+            steps: vec![],
+        };
+        let (p, r) = query.predecessor();
+        match r {
             Some(QuerySegment::Resource(res)) => {
-                if let Some(p) = p{
+                if let Some(p) = p.as_ref() {
                     if !p.is_empty() {
-                        plan.warning(format!("Query '{}' before resource at {} is ignored", p.encode(), res.position()));
+                        plan.warning(format!(
+                            "Query '{}' before resource at {} is ignored",
+                            p.encode(),
+                            res.position()
+                        ));
                     }
                 }
-                if let Some(head) = res.header{
+                if let Some(head) = res.header {
                     if !head.name.is_empty() {
-                        plan.warning(format!("Resource segment name '{}' at {} is ignored", head.name, head.position));
+                        plan.warning(format!(
+                            "Resource segment name '{}' at {} is ignored",
+                            head.name, head.position
+                        ));
                     }
-                    if head.parameters.is_empty(){
+                    if head.parameters.is_empty() {
                         plan.steps.push(Step::GetRes(res.query.clone()));
-                    }
-                    else{
-                        if head.parameters[0].value == "meta"{
-                            if head.parameters.len()>1{
-                                plan.warning(format!("Resource segment '{}...' parameters after meta at {} ignored", head.encode(), head.parameters[2]));
+                    } else {
+                        if head.parameters[0].value == "meta" {
+                            if head.parameters.len() > 1 {
+                                plan.warning(format!(
+                                    "Resource segment '{}...' parameters after meta at {} ignored",
+                                    head.encode(),
+                                    head.parameters[2]
+                                ));
                             }
                             plan.steps.push(Step::GetResMeta(res.query.clone()));
-                        }
-                        else {
-                            plan.warning(format!("Resource segment '{}...' parameters at {} ignored", head.encode(), head.parameters[0]));
+                        } else {
+                            plan.warning(format!(
+                                "Resource segment '{}...' parameters at {} ignored",
+                                head.encode(),
+                                head.parameters[0]
+                            ));
                             plan.steps.push(Step::GetRes(res.query.clone()));
                         }
                     }
-                }
-                else{
+                } else {
                     plan.steps.push(Step::GetRes(res.query.clone()));
                 }
-            },
+            }
             Some(QuerySegment::Transform(tqs)) => {
-                if let Some(p) = p{
+                if let Some(p) = p.as_ref() {
                     if !p.is_empty() {
                         plan.steps.push(Step::Evaluate(p.clone()));
                     }
                 }
-                if let Some(action) = tqs.action(){
-                    plan.steps.push(Step::ApplyAction(action.clone()));   
-                }
-                else{
-                    if tqs.is_filename(){
-                        plan.steps.push(Step::Filename(tqs.filename.unwrap().clone()));
+                if let Some(action) = tqs.action() {
+                    let ns = p.and_then(|x| x.last_ns());
+                    if let Some(ns) = ns.as_ref() {
+                        for par in ns.iter() {
+                            if !par.is_string() {
+                                plan.error(format!("Unsuported namespace {} at {}",par.encode(),par.position()));
+                            }
+                        }
                     }
-                    else{
-                        plan.error(format!("Unrecognized remainder {:?}",tqs));
+                    plan.steps.push(Step::ApplyAction {
+                        ns,
+                        action: action.clone(),
+                    });
+                } else {
+                    if tqs.is_filename() {
+                        plan.steps
+                            .push(Step::Filename(tqs.filename.unwrap().clone()));
+                    } else {
+                        plan.error(format!("Unrecognized remainder {:?}", tqs));
                     }
                 }
-
             }
             None => {
-                if let Some(p) = p{
+                if let Some(p) = p {
                     if !p.is_empty() {
                         plan.steps.push(Step::Evaluate(p.clone()));
                     }
@@ -84,30 +125,46 @@ impl Plan {
         }
         plan
     }
-    fn info(&mut self, message:String){
+    fn info(&mut self, message: String) {
         self.steps.push(Step::Info(message));
     }
-    fn warning(&mut self, message:String){
+    fn warning(&mut self, message: String) {
         self.steps.push(Step::Warning(message));
     }
-    fn error(&mut self, message:String){
+    fn error(&mut self, message: String) {
         self.steps.push(Step::Error(message));
+    }
+    fn has_error(&self)->bool{
+        self.steps.iter().any(|x| x.is_error())
+    }
+    fn has_warning(&self)->bool{
+        self.steps.iter().any(|x| x.is_warning())
     }
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use super::*;
 
     #[test]
-    fn test_step(){
-        let a:Step = Step::Get("abc".to_owned());
+    fn test_step() {
+        let a: Step = Step::Get("abc".to_owned());
     }
 
     #[test]
-    fn test_plan()-> Result<(), Box<dyn std::error::Error>>{
+    fn test_plan() -> Result<(), Box<dyn std::error::Error>> {
         let query = crate::parse::parse_query("query")?;
         let plan = Plan::from(&query);
+        assert!(!plan.has_error());
+        assert!(!plan.has_warning());
+        assert_eq!(plan.steps.len(),1);
+        if let Step::ApplyAction { ns, action } = &plan.steps[0]{
+            assert!(ns.is_none());
+            assert_eq!(action.name,"query");
+        }
+        else{
+            assert!(false);
+        }
         Ok(())
     }
 }

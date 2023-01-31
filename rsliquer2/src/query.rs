@@ -64,10 +64,22 @@ impl ActionParameter {
     pub fn new_link(query: Query) -> ActionParameter {
         ActionParameter::Link(query, Position::unknown())
     }
+    pub fn is_string(&self) -> bool {
+        match self{
+            ActionParameter::String(_, _) => true,
+            ActionParameter::Link(_, _) => false
+        }
+    }
     pub fn with_position(self, position: Position) -> Self {
         match self {
             Self::String(s, _) => Self::String(s, position),
             Self::Link(query, _) => Self::Link(query, position),
+        }
+    }
+    pub fn position(&self) -> Position {
+        match self {
+            Self::String(_, p) => p.to_owned(),
+            Self::Link(_, p) => p.to_owned(),
         }
     }
     pub fn encode(&self) -> String {
@@ -147,6 +159,17 @@ impl ActionRequest {
         Self {
             parameters: parameters,
             ..self
+        }
+    }
+    pub fn is_ns(&self) -> bool {
+        self.name == "ns"
+    }
+    pub fn ns(&self) -> Option<Vec<ActionParameter>> {
+        if self.is_ns(){
+            Some(self.parameters.clone())
+        }
+        else {
+            None
         }
     }
     pub fn encode(&self) -> String {
@@ -325,6 +348,15 @@ impl TransformQuerySegment {
             None
         }
     }
+    pub fn is_ns(&self) -> bool {
+        self.action().map_or(false, |x| x.is_ns())
+    }
+    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+        self.action().and_then(|x| x.ns())
+    }
+    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+        self.query.iter().rev().find_map(|x| x.ns())
+    }
 
     pub fn encode(&self) -> String {
         let pure_query = self.query.iter().map(|x| x.encode()).join("/");
@@ -461,6 +493,24 @@ impl QuerySegment {
             QuerySegment::Transform(tqs) => tqs.len(),
         }
     }
+    pub fn is_ns(&self) -> bool {
+        match self {
+            QuerySegment::Resource(_) => false,
+            QuerySegment::Transform(tqs) => tqs.is_ns(),
+        }
+   }
+    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+        match self {
+            QuerySegment::Resource(_) => None,
+            QuerySegment::Transform(tqs) => tqs.ns(),
+        }
+    }
+    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+        match self {
+            QuerySegment::Resource(_) => None,
+            QuerySegment::Transform(tqs) => tqs.last_ns(),
+        }
+    }
 }
 
 impl Display for QuerySegment {
@@ -495,6 +545,15 @@ impl Query {
     /// Returns true if the query is empty, i.e. has no segments and thus is equivalent to an empty string.
     pub fn is_empty(&self) -> bool {
         self.segments.is_empty()
+    }
+    pub fn is_ns(&self) -> bool {
+        self.transform_query().map_or(false, |x| x.is_ns())
+    }
+    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+        self.transform_query().and_then(|x| x.ns())
+    }
+    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+        self.transform_query().and_then(|x| x.last_ns())
     }
 
     /// Returns true if the query is a pure transformation query - i.e. a sequence of actions.

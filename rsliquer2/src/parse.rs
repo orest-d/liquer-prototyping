@@ -404,4 +404,23 @@ mod tests {
         assert_eq!(path.segments[0].len(), 2);
         Ok(())
     }
+    #[test]
+    fn parse_ns() -> Result<(), Error> {
+        let path = parse_query("ns-abc")?;
+        assert!(path.is_ns());
+        assert_eq!(path.ns().unwrap().len(),1);
+        assert_eq!(path.ns().unwrap()[0].encode(),"abc");
+        Ok(())
+    }
+    #[test]
+    fn parse_last_ns() -> Result<(), Error> {
+        let path = parse_query("ns-abc/test")?;
+        assert!(!path.is_ns());
+        assert_eq!(path.last_ns().unwrap().len(),1);
+        assert_eq!(path.last_ns().unwrap()[0].encode(),"abc");
+        let path = parse_query("test")?;
+        assert!(!path.is_ns());
+        assert!(path.last_ns().is_none());
+        Ok(())
+    }
 }
