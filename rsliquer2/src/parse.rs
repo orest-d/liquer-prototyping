@@ -298,6 +298,7 @@ fn simple_transform_query(text: Span) -> IResult<Span, Query> {
 fn resource_transform_query(text: Span) -> IResult<Span, Query> {
     let (text, abs) = opt(tag("/"))(text)?;
     let (text, resource) = resource_path1(text)?;
+    let (text, _slash) = tag("/")(text)?;
     let (text, tqs) = transform_segment_with_header(text)?;
     Ok((
         text,
@@ -337,7 +338,7 @@ fn empty_query(text: Span) -> IResult<Span, Query> {
 }
 
 fn query_parser(text: Span) -> IResult<Span, Query> {
-    alt((simple_transform_query, resource_transform_query, general_query, empty_query))(text)
+    alt((resource_transform_query, simple_transform_query, general_query, empty_query))(text)
 }
 /*
 fn parse_action(text:Span) ->IResult<Span, ActionRequest>{
@@ -420,8 +421,13 @@ mod tests {
         assert_eq!(path.len(), 1);
         let path = parse_query("-R/a/b/-/c/d")?;
         assert_eq!(path.len(), 2);
-        //let path = parse_query("a/b/-/c/d")?;
-        //assert_eq!(path.len(), 2);
+        let (s,q) = resource_transform_query(Span::new("a/b/-/c/d"))?;
+        println!("remainder '{s}'");
+        println!("query     {:?}",q);
+        println!("query enc {:?}",q.encode());
+        assert_eq!(s.fragment().len(),0);
+        let path = parse_query("a/b/-/c/d")?;
+        assert_eq!(path.len(), 2);
         Ok(())
     }
     #[test]

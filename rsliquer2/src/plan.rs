@@ -293,4 +293,20 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn test_plan_res_expand1() -> Result<(), Box<dyn std::error::Error>> {
+        let query = crate::parse::parse_query("a/b/-/c/d")?;
+        let mut plan = Plan::from(&query);
+        plan.expand();
+        let p = format!("{}", &plan);
+        println!("{}", p);
+        assert_eq!(
+            p,
+            r#"Plan for a/b/-/c/d:
+  GET RES         a/b
+  APPLY ACTION    (root): c
+  APPLY ACTION    (root): d"#
+        );
+        Ok(())
+    }
 }
