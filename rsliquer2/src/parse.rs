@@ -9,7 +9,6 @@ use nom_locate::LocatedSpan;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::{is_alphabetic, is_alphanumeric};
 use nom::multi::{many0, many1, separated_list0, separated_list1};
-use nom::sequence::pair;
 use nom::*;
 
 use crate::error::Error;
@@ -20,6 +19,7 @@ use crate::query::{
 
 type Span<'a> = LocatedSpan<&'a str>;
 
+#[allow(dead_code)]
 impl<'a> From<Span<'a>> for Position {
     fn from(span: Span<'a>) -> Position {
         Position {
@@ -39,7 +39,7 @@ fn identifier(text: Span) -> IResult<Span, String> {
 
 fn filename(text: Span) -> IResult<Span, String> {
     let (text, a) = take_while(|c| is_alphabetic(c as u8) || c == '_')(text)?;
-    let (text, dot) = nom::character::complete::char('.')(text)?;
+    let (text, _dot) = nom::character::complete::char('.')(text)?;
     let (text, b) =
         take_while1(|c| is_alphanumeric(c as u8) || c == '_' || c == '.' || c == '-')(text)?;
 
@@ -48,12 +48,12 @@ fn filename(text: Span) -> IResult<Span, String> {
 
 fn resource_name(text: Span) -> IResult<Span, ResourceName> {
     let position: Position = text.into();
-    let (text, a) = take_while(|c| is_alphabetic(c as u8) || c == '_')(text)?;
+    let (text, a) = take_while1(|c| is_alphanumeric(c as u8) || c == '_' || c == '.')(text)?;
     let (text, b) =
-        take_while1(|c| is_alphanumeric(c as u8) || c == '_' || c == '.' || c == '-')(text)?;
+        take_while(|c| is_alphanumeric(c as u8) || c == '_' || c == '.' || c == '-')(text)?;
     Ok((
         text,
-        ResourceName::new(format!("{}{}", a, b)).with_position(position),
+        ResourceName::new(format!("{}{}",a,b)).with_position(position),
     ))
 }
 fn parameter_text(text: Span) -> IResult<Span, String> {
@@ -233,7 +233,7 @@ fn resource_path1(text: Span) -> IResult<Span, Vec<ResourceName>> {
 
 fn resource_segment_with_header(text: Span) -> IResult<Span, ResourceQuerySegment> {
     let (text, header) = resource_segment_header(text)?;
-    let (text, query) = resource_path(text)?;
+    let (text, query) = resource_path1(text)?;
     Ok((
         text,
         ResourceQuerySegment {
@@ -315,7 +315,7 @@ fn resource_transform_query(text: Span) -> IResult<Span, Query> {
 }
 fn general_query(text: Span) -> IResult<Span, Query> {
     let (text, abs) = opt(tag("/"))(text)?;
-    let (text, segments) = many1(query_segment)(text)?;
+    let (text, segments) = separated_list1(tag("/"),query_segment)(text)?;
     Ok((
         text,
         Query {
@@ -402,6 +402,26 @@ mod tests {
         assert_eq!(path.len(), 1);
         
         assert_eq!(path.segments[0].len(), 2);
+        Ok(())
+    }
+    #[test]
+    fn parse_query_test2() -> Result<(), Box<dyn std::error::Error>> {
+        let (s,p) = resource_path1(Span::new("a/b/c"))?;
+        println!("remainder {s}");
+        println!("path      {:?}",p);
+        assert_eq!(s.fragment().len(),0);
+
+        let (s,rqs) = resource_segment_with_header(Span::new("-R/a/b/c"))?;
+        println!("remainder {s}");
+        println!("rqs     {:?}",rqs);
+        println!("rqs enc {}",rqs.encode());
+        assert_eq!(s.fragment().len(),0);
+        let path = parse_query("-R/a/b/c")?;
+        assert_eq!(path.len(), 1);
+        let path = parse_query("-R/a/b/-/c/d")?;
+        assert_eq!(path.len(), 2);
+        //let path = parse_query("a/b/-/c/d")?;
+        //assert_eq!(path.len(), 2);
         Ok(())
     }
     #[test]

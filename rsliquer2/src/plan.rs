@@ -44,14 +44,14 @@ impl Display for Step {
             Step::GetRes(s) => write!(
                 f,
                 "GET RES         {}",
-                s.iter().map(|x| x.encode()).join(", ")
+                s.iter().map(|x| x.encode()).join("/")
             ),
             Step::GetMeta(s) => write!(f, "GET META        {s}"),
             Step::GetResMeta(s) => {
                 write!(
                     f,
                     "GET RES META    {}",
-                    s.iter().map(|x| x.encode()).join(", ")
+                    s.iter().map(|x| x.encode()).join("/")
                 )
             }
             Step::Evaluate(s) => write!(f, "EVALUATE        {}", s.encode()),
@@ -185,7 +185,7 @@ impl Plan {
         false
     }
     fn expand(&mut self) {
-        while (self.expand_evaluate()) {}
+        while self.expand_evaluate() {}
     }
 
     fn info(&mut self, message: String) {
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_step() {
-        let a: Step = Step::Get("abc".to_owned());
+        let _a: Step = Step::Get("abc".to_owned());
     }
 
     #[test]
@@ -275,6 +275,22 @@ mod tests {
   APPLY ACTION    (root): c"#
         );
         println!("{}", &plan);
+        Ok(())
+    }
+    #[test]
+    fn test_plan_res_expand() -> Result<(), Box<dyn std::error::Error>> {
+        let query = crate::parse::parse_query("-R/a/b/-/c/d")?;
+        let mut plan = Plan::from(&query);
+        plan.expand();
+        let p = format!("{}", &plan);
+        println!("{}", p);
+        assert_eq!(
+            p,
+            r#"Plan for -R/a/b/-/c/d:
+  GET RES         a/b
+  APPLY ACTION    (root): c
+  APPLY ACTION    (root): d"#
+        );
         Ok(())
     }
 }
