@@ -58,7 +58,8 @@ impl Display for Step {
             Step::ApplyAction { ns, action } => write!(
                 f,
                 "APPLY ACTION    ({}): {}",
-                ns.as_ref().map_or("root".into(), |ap| ap.iter().map(|x| x.encode()).join(",")),
+                ns.as_ref()
+                    .map_or("root".into(), |ap| ap.iter().map(|x| x.encode()).join(",")),
                 action.encode()
             ),
             Step::Filename(s) => write!(f, "FILENAME        {}", s.encode()),
@@ -184,7 +185,7 @@ impl Plan {
         false
     }
     fn expand(&mut self) {
-        while(self.expand_evaluate()){}
+        while (self.expand_evaluate()) {}
     }
 
     fn info(&mut self, message: String) {
@@ -243,15 +244,21 @@ mod tests {
         let query = crate::parse::parse_query("a/b/c")?;
         let mut plan = Plan::from(&query);
         let p1 = format!("{}", &plan);
-        assert_eq!(p1,r#"Plan for a/b/c:
+        assert_eq!(
+            p1,
+            r#"Plan for a/b/c:
   EVALUATE        a/b
-  APPLY ACTION    (root): c"#);
+  APPLY ACTION    (root): c"#
+        );
         assert!(plan.expand_evaluate());
         let p2 = format!("{}", &plan);
-        assert_eq!(p2,r#"Plan for a/b/c:
+        assert_eq!(
+            p2,
+            r#"Plan for a/b/c:
   EVALUATE        a
   APPLY ACTION    (root): b
-  APPLY ACTION    (root): c"#);
+  APPLY ACTION    (root): c"#
+        );
         Ok(())
     }
     #[test]
@@ -260,10 +267,13 @@ mod tests {
         let mut plan = Plan::from(&query);
         plan.expand();
         let p = format!("{}", &plan);
-        assert_eq!(p, r#"Plan for a/b/c:
+        assert_eq!(
+            p,
+            r#"Plan for a/b/c:
   APPLY ACTION    (root): a
   APPLY ACTION    (root): b
-  APPLY ACTION    (root): c"#);
+  APPLY ACTION    (root): c"#
+        );
         println!("{}", &plan);
         Ok(())
     }
