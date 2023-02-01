@@ -1,4 +1,10 @@
+use std::fmt::Display;
+
+use itertools::Itertools;
+
 use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, ResourceName};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub enum Step {
     Get(String),
@@ -31,6 +37,39 @@ impl Step {
     }
 }
 
+impl Display for Step {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Step::Get(s) => write!(f, "GET             {s}"),
+            Step::GetRes(s) => write!(
+                f,
+                "GET RES         {}",
+                s.iter().map(|x| x.encode()).join(", ")
+            ),
+            Step::GetMeta(s) => write!(f, "GET META        {s}"),
+            Step::GetResMeta(s) => {
+                write!(
+                    f,
+                    "GET RES META    {}",
+                    s.iter().map(|x| x.encode()).join(", ")
+                )
+            }
+            Step::Evaluate(s) => write!(f, "EVALUATE        {}", s.encode()),
+            Step::ApplyAction { ns, action } => write!(
+                f,
+                "APPLY ACTION    ({}): {}",
+                ns.as_ref().map_or("root".into(), |ap| ap.iter().map(|x| x.encode()).join(",")),
+                action.encode()
+            ),
+            Step::Filename(s) => write!(f, "FILENAME        {}", s.encode()),
+            Step::Info(s) => write!(f, "INFO            {s}"),
+            Step::Warning(s) => write!(f, "WARNING         {s}"),
+            Step::Error(s) => write!(f, "ERROR           {s}"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plan {
     query: Query,
     steps: Vec<Step>,
@@ -129,6 +168,25 @@ impl Plan {
         }
         plan
     }
+    fn expand_evaluate(&mut self) -> bool {
+        for i in 0..self.steps.len() {
+            if let Step::Evaluate(query) = &self.steps[i] {
+                let mut plan = Plan::from(query);
+                self.steps.remove(i);
+                let mut i = i;
+                for x in plan.steps.drain(..) {
+                    self.steps.insert(i, x);
+                    i += 1;
+                }
+                return true;
+            }
+        }
+        false
+    }
+    fn expand(&mut self) {
+        while(self.expand_evaluate()){}
+    }
+
     fn info(&mut self, message: String) {
         self.steps.push(Step::Info(message));
     }
@@ -143,6 +201,16 @@ impl Plan {
     }
     fn has_warning(&self) -> bool {
         self.steps.iter().any(|x| x.is_warning())
+    }
+}
+impl Display for Plan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Plan for {}:\n{}",
+            self.query.encode(),
+            self.steps.iter().map(|x| format!("  {x}")).join("\n")
+        )
     }
 }
 
@@ -168,6 +236,35 @@ mod tests {
         } else {
             assert!(false);
         }
+        Ok(())
+    }
+    #[test]
+    fn test_plan_expand_evaluate() -> Result<(), Box<dyn std::error::Error>> {
+        let query = crate::parse::parse_query("a/b/c")?;
+        let mut plan = Plan::from(&query);
+        let p1 = format!("{}", &plan);
+        assert_eq!(p1,r#"Plan for a/b/c:
+  EVALUATE        a/b
+  APPLY ACTION    (root): c"#);
+        assert!(plan.expand_evaluate());
+        let p2 = format!("{}", &plan);
+        assert_eq!(p2,r#"Plan for a/b/c:
+  EVALUATE        a
+  APPLY ACTION    (root): b
+  APPLY ACTION    (root): c"#);
+        Ok(())
+    }
+    #[test]
+    fn test_plan_expand() -> Result<(), Box<dyn std::error::Error>> {
+        let query = crate::parse::parse_query("a/b/c")?;
+        let mut plan = Plan::from(&query);
+        plan.expand();
+        let p = format!("{}", &plan);
+        assert_eq!(p, r#"Plan for a/b/c:
+  APPLY ACTION    (root): a
+  APPLY ACTION    (root): b
+  APPLY ACTION    (root): c"#);
+        println!("{}", &plan);
         Ok(())
     }
 }
