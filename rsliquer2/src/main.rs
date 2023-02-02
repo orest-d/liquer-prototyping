@@ -14,6 +14,8 @@ mod query;
 mod parse;
 mod action_registry;
 pub mod plan;
+pub mod command;
+pub mod metadata;
 
 use std::collections::HashMap;
 

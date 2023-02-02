@@ -19,7 +19,13 @@ pub enum Value {
     Bytes(Vec<u8>),
 }
 
-trait ValueInfo {
+pub trait ValueInterface {
+    /// Empty value
+    fn none()->Self;
+
+    /// From string
+    fn new(txt:&str)->Self;
+
     /// String identifier of the state type
     /// Several types can be linked to the same identifier.
     /// The identifier must be cross-platform
@@ -41,7 +47,14 @@ trait ValueInfo {
     fn default_mimetype(&self) -> Cow<'static, str>;
 }
 
-impl ValueInfo for Value {
+impl ValueInterface for Value {
+    fn none()->Self {
+        Value::None
+    }
+
+    fn new(txt:&str)->Self {
+        Value::Text(txt.to_owned())
+    }
     fn identifier(&self) -> Cow<'static, str> {
         match self {
             Value::None => "none".into(),
