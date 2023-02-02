@@ -1,7 +1,7 @@
 use crate::query::Query;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Status{
+pub enum Status {
     None,
     Submitted,
     EvaluatingParent,
@@ -12,7 +12,7 @@ pub enum Status{
     Ready,
     Expired,
     External,
-    SideEffect
+    SideEffect,
 }
 
 impl Default for Status {
@@ -22,24 +22,26 @@ impl Default for Status {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct LogEntry{
+pub struct LogEntry {
     message: String,
     message_html: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct Metadata{
+pub struct Metadata {
     log: Vec<LogEntry>,
     query: Option<Query>,
     status: Status,
     type_identifier: String,
     message: String,
-    is_error: bool
+    is_error: bool,
 }
 
 impl Metadata {
-    pub fn new() -> Metadata{
-        Metadata { is_error: false, ..Self::default() }
+    pub fn new() -> Metadata {
+        Metadata {
+            is_error: false,
+            ..Self::default()
+        }
     }
-
 }
