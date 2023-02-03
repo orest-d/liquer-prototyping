@@ -21,10 +21,10 @@ pub enum Value {
 
 pub trait ValueInterface {
     /// Empty value
-    fn none()->Self;
+    fn none() -> Self;
 
     /// From string
-    fn new(txt:&str)->Self;
+    fn new(txt: &str) -> Self;
 
     /// String identifier of the state type
     /// Several types can be linked to the same identifier.
@@ -48,11 +48,11 @@ pub trait ValueInterface {
 }
 
 impl ValueInterface for Value {
-    fn none()->Self {
+    fn none() -> Self {
         Value::None
     }
 
-    fn new(txt:&str)->Self {
+    fn new(txt: &str) -> Self {
         Value::Text(txt.to_owned())
     }
     fn identifier(&self) -> Cow<'static, str> {
@@ -261,8 +261,8 @@ mod tests {
         let s = serde_json::to_string(&v)?;
         assert_eq!(s, "[null,false,123]");
         let mut m = BTreeMap::new();
-        m.insert("test".to_owned(),Value::None);
-        m.insert("a".to_owned(),Value::I32(123));
+        m.insert("test".to_owned(), Value::None);
+        m.insert("a".to_owned(), Value::I32(123));
         let v = Value::Object(m);
         let s = serde_json::to_string(&v)?;
         assert_eq!(s, "{\"a\":123,\"test\":null}");
@@ -270,25 +270,27 @@ mod tests {
     }
     #[test]
     fn test_serde_from_json() -> Result<(), Box<dyn std::error::Error>> {
-        let v:Value = serde_json::from_str("null")?;
+        let v: Value = serde_json::from_str("null")?;
         assert_eq!(v, Value::None);
-        let v:Value = serde_json::from_str("true")?;
+        let v: Value = serde_json::from_str("true")?;
         assert_eq!(v, Value::Bool(true));
-        let v:Value = serde_json::from_str("123")?;
+        let v: Value = serde_json::from_str("123")?;
         assert_eq!(v, Value::I32(123));
-        let v:Value = serde_json::from_str("123456789123456789")?;
+        let v: Value = serde_json::from_str("123456789123456789")?;
         assert_eq!(v, Value::I64(123456789123456789));
-        let v:Value = serde_json::from_str("123.456")?;
+        let v: Value = serde_json::from_str("123.456")?;
         assert_eq!(v, Value::F64(123.456));
-        let v:Value = serde_json::from_str("[null, true, 123]")?;
-        assert_eq!(v, Value::Array(vec![Value::None, Value::Bool(true), Value::I32(123)]));
-        let v:Value = serde_json::from_str("{\"a\":123,\"test\":null}")?;
-        if let Value::Object(x) = v{
+        let v: Value = serde_json::from_str("[null, true, 123]")?;
+        assert_eq!(
+            v,
+            Value::Array(vec![Value::None, Value::Bool(true), Value::I32(123)])
+        );
+        let v: Value = serde_json::from_str("{\"a\":123,\"test\":null}")?;
+        if let Value::Object(x) = v {
             assert_eq!(x.len(), 2);
             assert_eq!(x["a"], Value::I32(123));
             assert_eq!(x["test"], Value::None);
-        }
-        else{
+        } else {
             assert!(false);
         }
         Ok(())

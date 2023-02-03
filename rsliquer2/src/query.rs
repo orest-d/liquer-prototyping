@@ -64,9 +64,9 @@ impl ActionParameter {
         ActionParameter::Link(query, Position::unknown())
     }
     pub fn is_string(&self) -> bool {
-        match self{
+        match self {
             ActionParameter::String(_, _) => true,
-            ActionParameter::Link(_, _) => false
+            ActionParameter::Link(_, _) => false,
         }
     }
     pub fn with_position(self, position: Position) -> Self {
@@ -164,10 +164,9 @@ impl ActionRequest {
         self.name == "ns"
     }
     pub fn ns(&self) -> Option<Vec<ActionParameter>> {
-        if self.is_ns(){
+        if self.is_ns() {
             Some(self.parameters.clone())
-        }
-        else {
+        } else {
             None
         }
     }
@@ -350,10 +349,10 @@ impl TransformQuerySegment {
     pub fn is_ns(&self) -> bool {
         self.action().map_or(false, |x| x.is_ns())
     }
-    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+    pub fn ns(&self) -> Option<Vec<ActionParameter>> {
         self.action().and_then(|x| x.ns())
     }
-    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+    pub fn last_ns(&self) -> Option<Vec<ActionParameter>> {
         self.query.iter().rev().find_map(|x| x.ns())
     }
 
@@ -497,14 +496,14 @@ impl QuerySegment {
             QuerySegment::Resource(_) => false,
             QuerySegment::Transform(tqs) => tqs.is_ns(),
         }
-   }
-    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+    }
+    pub fn ns(&self) -> Option<Vec<ActionParameter>> {
         match self {
             QuerySegment::Resource(_) => None,
             QuerySegment::Transform(tqs) => tqs.ns(),
         }
     }
-    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+    pub fn last_ns(&self) -> Option<Vec<ActionParameter>> {
         match self {
             QuerySegment::Resource(_) => None,
             QuerySegment::Transform(tqs) => tqs.last_ns(),
@@ -548,10 +547,10 @@ impl Query {
     pub fn is_ns(&self) -> bool {
         self.transform_query().map_or(false, |x| x.is_ns())
     }
-    pub fn ns(&self) -> Option<Vec<ActionParameter>>{
+    pub fn ns(&self) -> Option<Vec<ActionParameter>> {
         self.transform_query().and_then(|x| x.ns())
     }
-    pub fn last_ns(&self)->Option<Vec<ActionParameter>>{
+    pub fn last_ns(&self) -> Option<Vec<ActionParameter>> {
         self.transform_query().and_then(|x| x.last_ns())
     }
 
@@ -697,7 +696,7 @@ impl Query {
             }
         }
     }
-    pub fn len(&self)->usize{
+    pub fn len(&self) -> usize {
         self.segments.len()
     }
 }

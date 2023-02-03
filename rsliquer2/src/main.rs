@@ -8,93 +8,90 @@ extern crate serde_yaml;
 #[macro_use]
 extern crate serde_derive;
 
-mod value;
-mod error;
-mod query;
-mod parse;
 mod action_registry;
-pub mod plan;
-pub mod command;
-pub mod metadata;
 pub mod cache;
+pub mod command;
+mod error;
+pub mod metadata;
+mod parse;
+pub mod plan;
+mod query;
 pub mod state;
+mod value;
 
 use std::collections::HashMap;
 
 use nom::bytes::complete::{tag, take_while, take_while1};
-use nom::*;
+use nom::character::{is_alphabetic, is_alphanumeric};
 use nom::multi::{many0, separated_list0};
-use nom::character::{is_alphanumeric, is_alphabetic};
 use nom::sequence::pair;
-
+use nom::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Action{
-    name:String,
-    parameters: Vec<String>
+struct Action {
+    name: String,
+    parameters: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct LogEntry{
-    message: String
+struct LogEntry {
+    message: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-enum Status{
+enum Status {
     Ok,
     Failed,
-    Pending
+    Pending,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-enum Value{
+enum Value {
     None,
-    String(String)
+    String(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct State{
-    query:String,
-    log:Vec<LogEntry>,
-    status:Status,
-    vars:HashMap<String,Value>,
-    attributes:HashMap<String,Value>,
-    filename:String,
-    message:String,
-    type_identifier:String,
-    cache_allowed:bool,
-    is_volatile:bool,
-    media_type:String
+struct State {
+    query: String,
+    log: Vec<LogEntry>,
+    status: Status,
+    vars: HashMap<String, Value>,
+    attributes: HashMap<String, Value>,
+    filename: String,
+    message: String,
+    type_identifier: String,
+    cache_allowed: bool,
+    is_volatile: bool,
+    media_type: String,
 }
 
-
-
-trait StateType<T>{
-    fn identifier()->String;
-    fn default_extension()->String;
-    fn default_media_type()->String;
-    fn is_type_of(data:Value)->bool;
-    fn value_as_bytes(data:Value, format:String)->Option<(Vec<u8>, String)>;
-    fn as_bytes(data:T, format:String)->Option<(Vec<u8>, String)>;
-    fn from_bytes(b: &Vec<u8>, format:String)->Option<T>;
-    fn value_from_bytes(b: &Vec<u8>, format:String)->Option<Value>;
+trait StateType<T> {
+    fn identifier() -> String;
+    fn default_extension() -> String;
+    fn default_media_type() -> String;
+    fn is_type_of(data: Value) -> bool;
+    fn value_as_bytes(data: Value, format: String) -> Option<(Vec<u8>, String)>;
+    fn as_bytes(data: T, format: String) -> Option<(Vec<u8>, String)>;
+    fn from_bytes(b: &Vec<u8>, format: String) -> Option<T>;
+    fn value_from_bytes(b: &Vec<u8>, format: String) -> Option<Value>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct ActionMetadata{
-    name:String,
-//    label:String,
-//    module:String,
+struct ActionMetadata {
+    name: String,
+    //    label:String,
+    //    module:String,
     doc: String,
     arguments: Vec<ArgumentMetadata>,
-    attributes: HashMap<String, Value>
+    attributes: HashMap<String, Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct ArgumentMetadata{
+struct ArgumentMetadata {
     name: String,
     data_type: String,
-    default: Option<Vec<String>>
+    default: Option<Vec<String>>,
 }
 /*
 trait ArgumentParser<T>{
@@ -217,36 +214,41 @@ impl Cache for MemoryCache{
     fn contains(&self, key:&str)->bool{
         self.0.contains_key(key)
     }
-    
+
 }
 */
 
-fn identifier(text:&str) ->IResult<&str, String>{
-    let (text, a) =take_while1(|c| {is_alphabetic(c as u8)||c=='_'})(text)?;
-    let (text, b) =take_while(|c| {is_alphanumeric(c as u8)||c=='_'})(text)?;
+fn identifier(text: &str) -> IResult<&str, String> {
+    let (text, a) = take_while1(|c| is_alphabetic(c as u8) || c == '_')(text)?;
+    let (text, b) = take_while(|c| is_alphanumeric(c as u8) || c == '_')(text)?;
 
-    Ok((text, format!("{}{}",a,b)))
+    Ok((text, format!("{}{}", a, b)))
 }
-fn parameter(text:&str) ->IResult<&str, String>{
-    let (text, par) =take_while(|c| {c!='-'&&c!='/'})(text)?;
+fn parameter(text: &str) -> IResult<&str, String> {
+    let (text, par) = take_while(|c| c != '-' && c != '/')(text)?;
 
     Ok((text, par.to_owned()))
 }
 
+fn parse_action(text: &str) -> IResult<&str, Action> {
+    let (text, name) = identifier(text)?;
+    let (text, p) = many0(pair(tag("-"), parameter))(text)?;
 
-fn parse_action(text:&str) ->IResult<&str, Action>{
-    let (text, name) =identifier(text)?;
-    let (text, p) =many0(pair(tag("-"),parameter))(text)?;
-
-    Ok((text, Action{name:name, parameters:p.iter().map(|x| x.1.to_owned()).collect()}))
+    Ok((
+        text,
+        Action {
+            name: name,
+            parameters: p.iter().map(|x| x.1.to_owned()).collect(),
+        },
+    ))
 }
 
-fn parse_action_path(text:&str) ->IResult<&str, Vec<Action>>{
+fn parse_action_path(text: &str) -> IResult<&str, Vec<Action>> {
     separated_list0(tag("/"), parse_action)(text)
 }
 
 fn main() {
-    println!("Hello, world! {:?}",parse_action_path("aaa-bb-cc/ddd"));
+    println!("Hello, world! {:?}", parse_action_path("aaa-bb-cc/ddd"));
 
-  //  let mut registry = ActionRegistry::new();
+    //  let mut registry = ActionRegistry::new();
 }

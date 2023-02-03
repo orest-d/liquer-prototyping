@@ -1,4 +1,4 @@
-use crate::{query::Query, error::Error, parse::parse_query};
+use crate::{error::Error, parse::parse_query, query::Query};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {
@@ -50,7 +50,7 @@ impl Metadata {
         Ok(metadata)
     }
 
-    pub fn cache_key(&self)->String{
+    pub fn cache_key(&self) -> String {
         self.query.encode()
     }
 }

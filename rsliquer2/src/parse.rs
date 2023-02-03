@@ -53,7 +53,7 @@ fn resource_name(text: Span) -> IResult<Span, ResourceName> {
         take_while(|c| is_alphanumeric(c as u8) || c == '_' || c == '.' || c == '-')(text)?;
     Ok((
         text,
-        ResourceName::new(format!("{}{}",a,b)).with_position(position),
+        ResourceName::new(format!("{}{}", a, b)).with_position(position),
     ))
 }
 fn parameter_text(text: Span) -> IResult<Span, String> {
@@ -316,7 +316,7 @@ fn resource_transform_query(text: Span) -> IResult<Span, Query> {
 }
 fn general_query(text: Span) -> IResult<Span, Query> {
     let (text, abs) = opt(tag("/"))(text)?;
-    let (text, segments) = separated_list1(tag("/"),query_segment)(text)?;
+    let (text, segments) = separated_list1(tag("/"), query_segment)(text)?;
     Ok((
         text,
         Query {
@@ -331,14 +331,19 @@ fn empty_query(text: Span) -> IResult<Span, Query> {
     Ok((
         text,
         Query {
-            segments:vec![],
+            segments: vec![],
             absolute: abs.is_some(),
         },
     ))
 }
 
 fn query_parser(text: Span) -> IResult<Span, Query> {
-    alt((resource_transform_query, simple_transform_query, general_query, empty_query))(text)
+    alt((
+        resource_transform_query,
+        simple_transform_query,
+        general_query,
+        empty_query,
+    ))(text)
 }
 /*
 fn parse_action(text:Span) ->IResult<Span, ActionRequest>{
@@ -401,31 +406,31 @@ mod tests {
         assert_eq!(path.len(), 1);
         let path = parse_query("abc-def/xxx-123")?;
         assert_eq!(path.len(), 1);
-        
+
         assert_eq!(path.segments[0].len(), 2);
         Ok(())
     }
     #[test]
     fn parse_query_test2() -> Result<(), Box<dyn std::error::Error>> {
-        let (s,p) = resource_path1(Span::new("a/b/c"))?;
+        let (s, p) = resource_path1(Span::new("a/b/c"))?;
         println!("remainder {s}");
-        println!("path      {:?}",p);
-        assert_eq!(s.fragment().len(),0);
+        println!("path      {:?}", p);
+        assert_eq!(s.fragment().len(), 0);
 
-        let (s,rqs) = resource_segment_with_header(Span::new("-R/a/b/c"))?;
+        let (s, rqs) = resource_segment_with_header(Span::new("-R/a/b/c"))?;
         println!("remainder {s}");
-        println!("rqs     {:?}",rqs);
-        println!("rqs enc {}",rqs.encode());
-        assert_eq!(s.fragment().len(),0);
+        println!("rqs     {:?}", rqs);
+        println!("rqs enc {}", rqs.encode());
+        assert_eq!(s.fragment().len(), 0);
         let path = parse_query("-R/a/b/c")?;
         assert_eq!(path.len(), 1);
         let path = parse_query("-R/a/b/-/c/d")?;
         assert_eq!(path.len(), 2);
-        let (s,q) = resource_transform_query(Span::new("a/b/-/c/d"))?;
+        let (s, q) = resource_transform_query(Span::new("a/b/-/c/d"))?;
         println!("remainder '{s}'");
-        println!("query     {:?}",q);
-        println!("query enc {:?}",q.encode());
-        assert_eq!(s.fragment().len(),0);
+        println!("query     {:?}", q);
+        println!("query enc {:?}", q.encode());
+        assert_eq!(s.fragment().len(), 0);
         let path = parse_query("a/b/-/c/d")?;
         assert_eq!(path.len(), 2);
         Ok(())
@@ -434,16 +439,16 @@ mod tests {
     fn parse_ns() -> Result<(), Error> {
         let path = parse_query("ns-abc")?;
         assert!(path.is_ns());
-        assert_eq!(path.ns().unwrap().len(),1);
-        assert_eq!(path.ns().unwrap()[0].encode(),"abc");
+        assert_eq!(path.ns().unwrap().len(), 1);
+        assert_eq!(path.ns().unwrap()[0].encode(), "abc");
         Ok(())
     }
     #[test]
     fn parse_last_ns() -> Result<(), Error> {
         let path = parse_query("ns-abc/test")?;
         assert!(!path.is_ns());
-        assert_eq!(path.last_ns().unwrap().len(),1);
-        assert_eq!(path.last_ns().unwrap()[0].encode(),"abc");
+        assert_eq!(path.last_ns().unwrap().len(), 1);
+        assert_eq!(path.last_ns().unwrap()[0].encode(), "abc");
         let path = parse_query("test")?;
         assert!(!path.is_ns());
         assert!(path.last_ns().is_none());
