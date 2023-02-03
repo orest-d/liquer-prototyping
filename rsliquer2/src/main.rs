@@ -16,6 +16,8 @@ mod action_registry;
 pub mod plan;
 pub mod command;
 pub mod metadata;
+pub mod cache;
+pub mod state;
 
 use std::collections::HashMap;
 

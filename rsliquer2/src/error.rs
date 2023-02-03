@@ -10,7 +10,8 @@ pub enum Error{
     ParameterError{message:String, position:Position},
     ConversionError{message:String},
     SerializationError{message:String, format:String},
-    General{message:String}
+    General{message:String},
+    CacheNotSupported,
 }
 
 impl fmt::Display for Error{
@@ -23,6 +24,7 @@ impl fmt::Display for Error{
             Error::ConversionError{message} => write!(f, "Error: {}", message),
             Error::SerializationError{message, format:_} => write!(f, "Error: {}", message),
             Error::General{message} => write!(f, "Error: {}", message),
+            Error::CacheNotSupported => write!(f, "Error: Cache not supported"),
         }
     }    
 }
