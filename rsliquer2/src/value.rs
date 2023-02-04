@@ -140,10 +140,64 @@ impl TryFrom<Value> for i32 {
         }
     }
 }
-
 impl From<i32> for Value {
     fn from(value: i32) -> Value {
         Value::I32(value)
+    }
+}
+
+impl TryFrom<Value> for i64 {
+    type Error = Error;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::I32(x) => Ok(x as i64),
+            Value::I64(x) => Ok(x),
+            _ => Err(Error::ConversionError {
+                message: format!("Can't convert {} to i64", value.type_name()),
+            }),
+        }
+    }
+}
+impl From<i64> for Value {
+    fn from(value: i64) -> Value {
+        Value::I64(value)
+    }
+}
+
+impl TryFrom<Value> for f64 {
+    type Error = Error;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::I32(x) => Ok(x as f64),
+            Value::I64(x) => Ok(x as f64),
+            Value::F64(x) => Ok(x),
+            _ => Err(Error::ConversionError {
+                message: format!("Can't convert {} to f64", value.type_name()),
+            }),
+        }
+    }
+}
+impl From<f64> for Value {
+    fn from(value: f64) -> Value {
+        Value::F64(value)
+    }
+}
+
+impl TryFrom<Value> for bool {
+    type Error = Error;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::I32(x) => Ok(x!=0),
+            Value::I64(x) => Ok(x!=0),
+            _ => Err(Error::ConversionError {
+                message: format!("Can't convert {} to bool", value.type_name()),
+            }),
+        }
+    }
+}
+impl From<bool> for Value {
+    fn from(value: bool) -> Value {
+        Value::Bool(value)
     }
 }
 
@@ -188,6 +242,19 @@ impl ValueSerializer for Value {
                 message: format!("JSON error {}", e),
                 format: format.to_owned(),
             }),
+            "txt"|"html" => match self{
+                Value::None => Ok("none".as_bytes().to_vec()),
+                Value::Bool(true) => Ok("true".as_bytes().to_vec()),
+                Value::Bool(false) => Ok("false".as_bytes().to_vec()),
+                Value::I32(x) => Ok(format!("{x}").into_bytes()),
+                Value::I64(x) => Ok(format!("{x}").into_bytes()),
+                Value::F64(x) => Ok(format!("{x}").into_bytes()),
+                Value::Text(x) => Ok(x.as_bytes().to_vec()),
+                _ => Err(Error::SerializationError {
+                    message: format!("Serialization to {} not supported by {}", format, self.type_name()),
+                    format: format.to_owned(),
+                })
+            },
             _ => Err(Error::SerializationError {
                 message: format!("Unsupported format {}", format),
                 format: format.to_owned(),

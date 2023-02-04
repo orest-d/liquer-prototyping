@@ -10,7 +10,7 @@ extern crate serde_derive;
 
 mod action_registry;
 pub mod cache;
-pub mod command;
+pub mod commands;
 mod error;
 pub mod metadata;
 mod parse;
