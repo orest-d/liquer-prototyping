@@ -2,6 +2,8 @@ use itertools::Itertools;
 use std::fmt::Display;
 use std::ops::Add;
 
+use crate::error::Error;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
     pub offset: usize,

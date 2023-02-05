@@ -1,10 +1,14 @@
+use nom_locate::position;
+
 use crate::error::Error;
+use crate::state::State;
+use std::convert::{TryFrom, TryInto};
+use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
 
 use crate::metadata::Metadata;
 use crate::query::{ActionParameter, ActionRequest, Position, Query};
-use crate::value::ValueInterface;
+use crate::value::*;
 /*
 pub struct CommandParameter<V>
 where
@@ -13,11 +17,6 @@ where
     value: Arc<V>,
     position: Position,
 }
-
-pub trait Context {}
-struct DummyContext;
-
-impl Context for DummyContext {}
 
 
 pub enum Version{
@@ -53,15 +52,80 @@ where
 {
     String(String, Position),
     Link(Query, Position),
-    Value(Arc<V>, Position),
+    Value(Arc<V>),
 }
 
 impl<V> CommandParameter<V>
 where
     V: ValueInterface,
 {
-    //    pub fn convert_into<T,C:Context>(&self, )
+    pub fn from_action_parameter(action: &ActionParameter) -> Self {
+        match action {
+            ActionParameter::String(s, p) => CommandParameter::String(s.to_owned(), p.to_owned()),
+            ActionParameter::Link(q, p) => CommandParameter::Link(q.to_owned(), p.to_owned()),
+        }
+    }
 }
+
+pub trait TryFromCommandParameter<V, C>
+where
+    V: ValueInterface,
+    C: Context<V>,
+    Self: Sized,
+{
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error>;
+    fn try_from(value: &CommandParameter<V>, context: &mut C) -> Result<Self, Error> {
+        Self::try_from_check(value, context, false)
+    }
+}
+
+impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Arc<V> {
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error> {
+        match value {
+            CommandParameter::String(s, _) => Ok(Arc::new(V::new(s))),
+            CommandParameter::Link(q, p) => {
+                if check {
+                    Ok(Arc::new(V::none()))
+                } else {
+                    context
+                        .evaluate_parameter_link(q, p)
+                        .map(|x| x.data.clone())
+                }
+            }
+            CommandParameter::Value(v) => Ok(v.clone()),
+        }
+    }
+}
+
+/*
+impl<'s, V: ValueInterface, C:Context> TryFromCommandParameter<'s, V, C, _> for &'s mut C{
+    fn try_from_check(value: &CommandParameter<Value>, context:&'s mut C, check:bool) -> Result<'s+Self, Error>{
+        Ok(context)
+    }
+}
+*/
+/*
+impl TryFrom<CommandParameter<Value>> for i32 {
+    type Error = Error;
+    fn try_from(value: CommandParameter<Value>) -> Result<Self, Self::Error> {
+        match value {
+            CommandParameter::String(s, position) => {
+                i32::from_str(&s).map_err(|e| Error::ParameterError { message:format!("Integer parameter expected; {e}"), position:position.clone() })
+            },
+            CommandParameter::Link(q, position) => Err(Error::ParameterError { message:format!("Link not supported: '{}'",q.encode()), position:position.clone() }),
+            CommandParameter::Value(v) => i32::try_from(&*v),
+        }
+    }
+}
+
 
 impl<V: ValueInterface> From<String> for CommandParameter<V> {
     fn from(value: String) -> Self {
@@ -81,11 +145,25 @@ impl<V: ValueInterface> From<&ActionParameter> for CommandParameter<V> {
         }
     }
 }
-
-pub trait Context {}
+*/
+pub trait Context<V: ValueInterface> {
+    fn evaluate_parameter_link(
+        &mut self,
+        query: &Query,
+        position: &Position,
+    ) -> Result<State<V>, Error>;
+}
 struct DummyContext;
 
-impl Context for DummyContext {}
+impl<V: ValueInterface> Context<V> for DummyContext {
+    fn evaluate_parameter_link(
+        &mut self,
+        query: &Query,
+        position: &Position,
+    ) -> Result<State<V>, Error> {
+        todo!()
+    }
+}
 
 pub trait Command<V>
 where
@@ -96,19 +174,19 @@ where
         state_data: Arc<V>,
         state_metadata: Arc<Metadata>,
         parameters: &[CommandParameter<V>],
-        context: impl Context,
+        context: impl Context<V>,
     ) -> Result<V, Error>;
     fn execute_action(
         &mut self,
         state_data: Arc<V>,
         state_metadata: Arc<Metadata>,
         action: &ActionRequest,
-        context: impl Context,
+        context: impl Context<V>,
     ) -> Result<V, Error> {
         let mut par: Vec<_> = action
             .parameters
             .iter()
-            .map(|x| CommandParameter::from(x))
+            .map(|x| CommandParameter::from_action_parameter(x))
             .collect();
         self.call_command(state_data, state_metadata, par.as_slice(), context)
     }
@@ -124,7 +202,7 @@ where
         state_data: Arc<V>,
         state_metadata: Arc<Metadata>,
         parameters: &[CommandParameter<V>],
-        context: impl Context,
+        context: impl Context<V>,
     ) -> Result<V, Error> {
         if parameters.is_empty() {
             self();

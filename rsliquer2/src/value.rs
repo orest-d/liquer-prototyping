@@ -23,6 +23,9 @@ pub trait ValueInterface {
     /// Empty value
     fn none() -> Self;
 
+    /// Test if value is empty
+    fn is_none(&self) -> bool;
+
     /// From string
     fn new(txt: &str) -> Self;
 
@@ -50,6 +53,13 @@ pub trait ValueInterface {
 impl ValueInterface for Value {
     fn none() -> Self {
         Value::None
+    }
+    fn is_none(&self) -> bool {
+        if let Value::None = self {
+            true
+        } else {
+            false
+        }
     }
 
     fn new(txt: &str) -> Self {
@@ -126,6 +136,21 @@ impl ValueInterface for Value {
     }
 }
 
+impl TryFrom<&Value> for i32 {
+    type Error = Error;
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::I32(x) => Ok(*x),
+            Value::I64(x) => i32::try_from(*x).map_err(|e| Error::ConversionError {
+                message: format!("I64 to i32 conversion error {e}"),
+            }),
+            _ => Err(Error::ConversionError {
+                message: format!("Can't convert {} to i32", value.type_name()),
+            }),
+        }
+    }
+}
+
 impl TryFrom<Value> for i32 {
     type Error = Error;
     fn try_from(value: Value) -> Result<Self, Self::Error> {
@@ -140,6 +165,7 @@ impl TryFrom<Value> for i32 {
         }
     }
 }
+
 impl From<i32> for Value {
     fn from(value: i32) -> Value {
         Value::I32(value)
@@ -187,8 +213,8 @@ impl TryFrom<Value> for bool {
     type Error = Error;
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::I32(x) => Ok(x!=0),
-            Value::I64(x) => Ok(x!=0),
+            Value::I32(x) => Ok(x != 0),
+            Value::I64(x) => Ok(x != 0),
             _ => Err(Error::ConversionError {
                 message: format!("Can't convert {} to bool", value.type_name()),
             }),
@@ -242,7 +268,7 @@ impl ValueSerializer for Value {
                 message: format!("JSON error {}", e),
                 format: format.to_owned(),
             }),
-            "txt"|"html" => match self{
+            "txt" | "html" => match self {
                 Value::None => Ok("none".as_bytes().to_vec()),
                 Value::Bool(true) => Ok("true".as_bytes().to_vec()),
                 Value::Bool(false) => Ok("false".as_bytes().to_vec()),
@@ -251,9 +277,13 @@ impl ValueSerializer for Value {
                 Value::F64(x) => Ok(format!("{x}").into_bytes()),
                 Value::Text(x) => Ok(x.as_bytes().to_vec()),
                 _ => Err(Error::SerializationError {
-                    message: format!("Serialization to {} not supported by {}", format, self.type_name()),
+                    message: format!(
+                        "Serialization to {} not supported by {}",
+                        format,
+                        self.type_name()
+                    ),
                     format: format.to_owned(),
-                })
+                }),
             },
             _ => Err(Error::SerializationError {
                 message: format!("Unsupported format {}", format),

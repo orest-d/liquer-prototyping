@@ -185,7 +185,7 @@ mod tests {
             assert!(cache.contains("key"));
             println!("Jointed t2 CACHED {:?}", cache.get("key"));
             assert!(!cache.get("key").unwrap().is_empty());
-            assert_eq!(*cache.get("key").unwrap().data.unwrap(), Value::I32(123));
+            assert_eq!(*cache.get("key").unwrap().data, Value::I32(123));
         } else {
             assert!(false);
         }

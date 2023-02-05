@@ -4,14 +4,14 @@ use crate::{error::Error, metadata::Metadata, value::ValueInterface};
 
 #[derive(Debug)]
 pub struct State<V: ValueInterface> {
-    pub data: Option<Arc<V>>,
+    pub data: Arc<V>,
     pub metadata: Arc<Metadata>,
 }
 
 impl<V: ValueInterface> State<V> {
     pub fn new() -> State<V> {
         State {
-            data: None,
+            data: Arc::new(V::none()),
             metadata: Arc::new(Metadata::new()),
         }
     }
@@ -26,7 +26,7 @@ impl<V: ValueInterface> State<V> {
     }
     pub fn with_data(&self, value: V) -> Self {
         State {
-            data: Some(Arc::new(value)),
+            data: Arc::new(value),
             metadata: Arc::new((*self.metadata).clone()),
         }
     }
@@ -34,7 +34,7 @@ impl<V: ValueInterface> State<V> {
         self.metadata.cache_key()
     }
     pub fn is_empty(&self) -> bool {
-        self.data.is_none()
+        (*self.data).is_none()
     }
 }
 
