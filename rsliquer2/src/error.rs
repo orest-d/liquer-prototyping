@@ -12,6 +12,7 @@ pub enum Error {
     SerializationError { message: String, format: String },
     General { message: String },
     CacheNotSupported,
+    NotSupported { message: String },
 }
 
 impl fmt::Display for Error {
@@ -27,6 +28,7 @@ impl fmt::Display for Error {
             Error::SerializationError { message, format: _ } => write!(f, "Error: {}", message),
             Error::General { message } => write!(f, "Error: {}", message),
             Error::CacheNotSupported => write!(f, "Error: Cache not supported"),
+            Error::NotSupported { message } => write!(f, "Error: {}", message),
         }
     }
 }

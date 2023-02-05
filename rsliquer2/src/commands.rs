@@ -105,6 +105,77 @@ impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Arc<V> 
     }
 }
 
+impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for State<V> {
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error> {
+        match value {
+            CommandParameter::String(s, _) => Ok(State::new().with_string(s)),
+            CommandParameter::Link(q, p) => {
+                if check {
+                    Ok(State::new())
+                } else {
+                    context.evaluate_parameter_link(q, p)
+                }
+            }
+            CommandParameter::Value(v) => Ok(State::new().with_data((**v).clone())),
+        }
+    }
+}
+
+impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Option<String> {
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error> {
+        match value {
+            CommandParameter::String(s, _) => Ok(if s.is_empty() {
+                None
+            } else {
+                Some(s.to_owned())
+            }),
+            CommandParameter::Link(q, p) => {
+                if check {
+                    Ok(None)
+                } else {
+                    context
+                        .evaluate_parameter_link(q, p)
+                        .and_then(|x| x.data.try_into_string_option())
+                }
+            }
+            CommandParameter::Value(v) => v.try_into_string_option(),
+        }
+    }
+}
+
+/*
+impl<V: ValueInterface + TryInto<i32>, C: Context<V>> TryFromCommandParameter<V, C> for i32 {
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error> {
+        match value {
+            CommandParameter::String(s, position) => i32::from_str(&s).map_err(|e| Error::ParameterError { message:format!("Integer parameter expected; {e}"), position:position.clone() }),
+            CommandParameter::Link(q, p) => {
+                if check {
+                    Ok(0)
+                } else {
+                    context
+                        .evaluate_parameter_link(q, p).and_then(|x|{
+                            (*x.data).try_into().map_err(|e| Error::ParameterError { message:format!("Integer parameter expected"), position:Position::unknown() })
+                        })
+                }
+            }
+            CommandParameter::Value(v) => (**v).try_into().map_err(|e| Error::ParameterError { message:format!("Integer parameter expected"), position:Position::unknown() }),
+        }
+    }
+}
+*/
+
 /*
 impl<'s, V: ValueInterface, C:Context> TryFromCommandParameter<'s, V, C, _> for &'s mut C{
     fn try_from_check(value: &CommandParameter<Value>, context:&'s mut C, check:bool) -> Result<'s+Self, Error>{
@@ -147,21 +218,22 @@ impl<V: ValueInterface> From<&ActionParameter> for CommandParameter<V> {
 }
 */
 pub trait Context<V: ValueInterface> {
-    fn evaluate_parameter_link(
-        &mut self,
-        query: &Query,
-        position: &Position,
-    ) -> Result<State<V>, Error>;
-}
-struct DummyContext;
-
-impl<V: ValueInterface> Context<V> for DummyContext {
+    fn evaluate(&mut self, query: &Query) -> Result<State<V>, Error>;
     fn evaluate_parameter_link(
         &mut self,
         query: &Query,
         position: &Position,
     ) -> Result<State<V>, Error> {
-        todo!()
+        self.evaluate(query)
+    }
+}
+struct DummyContext;
+
+impl<V: ValueInterface> Context<V> for DummyContext {
+    fn evaluate(&mut self, query: &Query) -> Result<State<V>, Error> {
+        Err(Error::NotSupported {
+            message: format!("Dummy context does not support evaluation."),
+        })
     }
 }
 

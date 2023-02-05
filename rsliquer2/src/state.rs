@@ -30,6 +30,14 @@ impl<V: ValueInterface> State<V> {
             metadata: Arc::new((*self.metadata).clone()),
         }
     }
+    pub fn with_string(&self, text: &str) -> Self {
+        let mut metadata = (*self.metadata).clone();
+        metadata.type_identifier = "text".to_owned();
+        State {
+            data: Arc::new(V::new(text)),
+            metadata: Arc::new(metadata),
+        }
+    }
     pub fn cache_key(&self) -> String {
         self.metadata.cache_key()
     }

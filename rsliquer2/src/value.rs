@@ -19,7 +19,7 @@ pub enum Value {
     Bytes(Vec<u8>),
 }
 
-pub trait ValueInterface {
+pub trait ValueInterface: Clone {
     /// Empty value
     fn none() -> Self;
 
@@ -28,6 +28,18 @@ pub trait ValueInterface {
 
     /// From string
     fn new(txt: &str) -> Self;
+
+    /// Try to get a string out
+    fn try_into_string(&self) -> Result<String, Error>;
+
+    /// Try to get a string out
+    fn try_into_string_option(&self) -> Result<Option<String>, Error> {
+        if self.is_none() {
+            Ok(None)
+        } else {
+            self.try_into_string().map(|x| Some(x))
+        }
+    }
 
     /// String identifier of the state type
     /// Several types can be linked to the same identifier.
@@ -65,6 +77,31 @@ impl ValueInterface for Value {
     fn new(txt: &str) -> Self {
         Value::Text(txt.to_owned())
     }
+
+    fn try_into_string(&self) -> Result<String, Error> {
+        match self {
+            Value::None => Err(Error::ConversionError {
+                message: format!("{} is not a string", self.identifier()),
+            }),
+            Value::Bool(_) => Err(Error::ConversionError {
+                message: format!("{} is not a string", self.identifier()),
+            }),
+            Value::I32(n) => Ok(format!("{n}")),
+            Value::I64(n) => Ok(format!("{n}")),
+            Value::F64(n) => Ok(format!("{n}")),
+            Value::Text(t) => Ok(t.to_owned()),
+            Value::Array(_) => Err(Error::ConversionError {
+                message: format!("{} is not a string", self.identifier()),
+            }),
+            Value::Object(_) => Err(Error::ConversionError {
+                message: format!("{} is not a string", self.identifier()),
+            }),
+            Value::Bytes(_) => Err(Error::ConversionError {
+                message: format!("{} is not a string", self.identifier()),
+            }),
+        }
+    }
+
     fn identifier(&self) -> Cow<'static, str> {
         match self {
             Value::None => "none".into(),
