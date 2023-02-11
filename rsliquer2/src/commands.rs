@@ -151,6 +151,29 @@ impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Option<
     }
 }
 
+impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for i32 {
+    fn try_from_check(
+        value: &CommandParameter<V>,
+        context: &mut C,
+        check: bool,
+    ) -> Result<Self, Error> {
+        match value {
+            CommandParameter::String(s, p) => s.parse().map_err(|e| Error::ParameterError {
+                message: format!("Integer parse error:{e}"),
+                position: p.clone(),
+            }),
+            CommandParameter::Link(q, p) => {
+                if check {
+                    Ok(0)
+                } else {
+                    context.evaluate_parameter_link(q, p).and_then(|x| x.data.try_into_i32())
+                }
+            }
+            CommandParameter::Value(v) => v.try_into_i32(),
+        }
+    }
+}
+
 /*
 impl<V: ValueInterface + TryInto<i32>, C: Context<V>> TryFromCommandParameter<V, C> for i32 {
     fn try_from_check(

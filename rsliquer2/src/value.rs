@@ -41,6 +41,9 @@ pub trait ValueInterface: Clone {
         }
     }
 
+    /// Try to get a string out
+    fn try_into_i32(&self) -> Result<i32, Error>;
+
     /// String identifier of the state type
     /// Several types can be linked to the same identifier.
     /// The identifier must be cross-platform
@@ -98,6 +101,15 @@ impl ValueInterface for Value {
             }),
             Value::Bytes(_) => Err(Error::ConversionError {
                 message: format!("{} is not a string", self.identifier()),
+            }),
+        }
+    }
+
+    fn try_into_i32(&self) -> Result<i32, Error> {
+        match self {
+            Value::I32(n) => Ok(*n),
+            _ => Err(Error::ConversionError {
+                message: format!("{} is not an i32", self.identifier()),
             }),
         }
     }
