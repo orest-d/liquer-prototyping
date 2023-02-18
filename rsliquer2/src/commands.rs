@@ -3,6 +3,7 @@ use nom_locate::position;
 use crate::error::Error;
 use crate::state::State;
 use std::convert::{TryFrom, TryInto};
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -77,6 +78,13 @@ where
         context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error>;
+    fn try_from_state_check(
+        value: &State<V>,
+        context: &mut impl Context<V>,
+        check: bool,
+    ) -> Result<Self, Error>{
+        Self::try_from_check(&CommandParameter::Value(value.data.clone()), context, check)
+    }
     fn try_from(value: &CommandParameter<V>, context: &mut impl Context<V>) -> Result<Self, Error> {
         Self::try_from_check(value, context, false)
     }
@@ -268,13 +276,13 @@ where
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: impl Context<V>,
+        context: &mut impl Context<V>,
     ) -> Result<V, Error>;
     fn execute_action(
         &mut self,
         state:State<V>,
         action: &ActionRequest,
-        context: impl Context<V>,
+        context: &mut impl Context<V>,
     ) -> Result<V, Error> {
         let mut par: Vec<_> = action
             .parameters
@@ -295,7 +303,7 @@ where
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: impl Context<V>,
+        context: &mut impl Context<V>,
     ) -> Result<V, Error> {
         if parameters.is_empty() {
             if check{
@@ -313,28 +321,33 @@ where
     }
 }
 
-/*
-pub struct<S,R,F:FnMut(S) -> R> Command1(F);
 
-impl<V, S, R, F:FnMut(S) -> R> Command<V> for Command1<S,R,F>
+pub struct Command1<S,R,F> where F:FnMut(S) -> R{
+    f:F,
+    state:PhantomData<S>,
+    result:PhantomData<R>
+}
+
+impl<V, S, R, F> Command<V> for Command1<S,R,F>
 where
+    F: FnMut(S) -> R,
     V: ValueInterface + From<R>,
-    S: TryFrom<V>
+    S: TryFromCommandParameter<V>
 {
     fn call_command(
         &mut self,
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: impl Context<V>,
-    ) -> Result<V, Error> {
+        context: &mut impl Context<V>,
+    ) -> Result<V, crate::error::Error> {
         if parameters.is_empty() {
             if check{
-                S::try_from(state.data)?;
+                S::try_from_state_check(&state, context, true)?;
                 Ok(V::none())
             }
             else{
-                Ok(V::from(self(S::try_from(state.data))))
+                Ok(V::from((self.f)(S::try_from_state_check(&state, context, false)?)))
             }
         } else {
             Err(Error::ParameterError {
@@ -344,7 +357,7 @@ where
         }
     }
 }
-*/
+
 
 #[cfg(test)]
 mod test {
@@ -365,7 +378,7 @@ mod test {
         (&mut f).execute_action(
             State::<Value>::new(),
             &a,
-            context,
+            &mut context,
         );
         assert!(called);
         Ok(())
@@ -385,7 +398,7 @@ mod test {
         let result = (&mut f).execute_action(
             State::<Value>::new(),
             &a,
-            context,
+            &mut context,
         );
         assert_eq!(result.unwrap().try_into_i32().unwrap(), 123);
         assert!(called);
