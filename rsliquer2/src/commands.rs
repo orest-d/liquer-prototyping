@@ -67,26 +67,25 @@ where
     }
 }
 
-pub trait TryFromCommandParameter<V, C>
+pub trait TryFromCommandParameter<V>
 where
     V: ValueInterface,
-    C: Context<V>,
     Self: Sized,
 {
     fn try_from_check(
         value: &CommandParameter<V>,
-        context: &mut C,
+        context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error>;
-    fn try_from(value: &CommandParameter<V>, context: &mut C) -> Result<Self, Error> {
+    fn try_from(value: &CommandParameter<V>, context: &mut impl Context<V>) -> Result<Self, Error> {
         Self::try_from_check(value, context, false)
     }
 }
 
-impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Arc<V> {
+impl<V: ValueInterface> TryFromCommandParameter<V> for Arc<V> {
     fn try_from_check(
         value: &CommandParameter<V>,
-        context: &mut C,
+        context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error> {
         match value {
@@ -105,10 +104,10 @@ impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Arc<V> 
     }
 }
 
-impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for State<V> {
+impl<V: ValueInterface> TryFromCommandParameter<V> for State<V> {
     fn try_from_check(
         value: &CommandParameter<V>,
-        context: &mut C,
+        context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error> {
         match value {
@@ -125,10 +124,10 @@ impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for State<V
     }
 }
 
-impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Option<String> {
+impl<V: ValueInterface> TryFromCommandParameter<V> for Option<String> {
     fn try_from_check(
         value: &CommandParameter<V>,
-        context: &mut C,
+        context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error> {
         match value {
@@ -151,10 +150,10 @@ impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for Option<
     }
 }
 
-impl<V: ValueInterface, C: Context<V>> TryFromCommandParameter<V, C> for i32 {
+impl<V: ValueInterface> TryFromCommandParameter<V> for i32 {
     fn try_from_check(
         value: &CommandParameter<V>,
-        context: &mut C,
+        context: &mut impl Context<V>,
         check: bool,
     ) -> Result<Self, Error> {
         match value {
@@ -266,15 +265,14 @@ where
 {
     fn call_command(
         &mut self,
-        state_data: Arc<V>,
-        state_metadata: Arc<Metadata>,
+        state:State<V>,
         parameters: &[CommandParameter<V>],
+        check:bool,
         context: impl Context<V>,
     ) -> Result<V, Error>;
     fn execute_action(
         &mut self,
-        state_data: Arc<V>,
-        state_metadata: Arc<Metadata>,
+        state:State<V>,
         action: &ActionRequest,
         context: impl Context<V>,
     ) -> Result<V, Error> {
@@ -283,25 +281,29 @@ where
             .iter()
             .map(|x| CommandParameter::from_action_parameter(x))
             .collect();
-        self.call_command(state_data, state_metadata, par.as_slice(), context)
+        self.call_command(state, par.as_slice(), false, context)
     }
 }
 
-impl<F, V> Command<V> for F
+impl<F, V, R> Command<V> for F
 where
-    F: FnMut() -> (),
-    V: ValueInterface,
+    F: FnMut() -> R,
+    V: ValueInterface + From<R>
 {
     fn call_command(
         &mut self,
-        state_data: Arc<V>,
-        state_metadata: Arc<Metadata>,
+        state:State<V>,
         parameters: &[CommandParameter<V>],
+        check:bool,
         context: impl Context<V>,
     ) -> Result<V, Error> {
         if parameters.is_empty() {
-            self();
-            Ok(V::none())
+            if check{
+                Ok(V::none())
+            }
+            else{
+                Ok(V::from(self()))
+            }
         } else {
             Err(Error::ParameterError {
                 message: format!("Too many parameters"),
@@ -310,6 +312,39 @@ where
         }
     }
 }
+
+/*
+pub struct<S,R,F:FnMut(S) -> R> Command1(F);
+
+impl<V, S, R, F:FnMut(S) -> R> Command<V> for Command1<S,R,F>
+where
+    V: ValueInterface + From<R>,
+    S: TryFrom<V>
+{
+    fn call_command(
+        &mut self,
+        state:State<V>,
+        parameters: &[CommandParameter<V>],
+        check:bool,
+        context: impl Context<V>,
+    ) -> Result<V, Error> {
+        if parameters.is_empty() {
+            if check{
+                S::try_from(state.data)?;
+                Ok(V::none())
+            }
+            else{
+                Ok(V::from(self(S::try_from(state.data))))
+            }
+        } else {
+            Err(Error::ParameterError {
+                message: format!("Too many parameters"),
+                position: Position::unknown(),
+            })
+        }
+    }
+}
+*/
 
 #[cfg(test)]
 mod test {
@@ -328,11 +363,31 @@ mod test {
         };
         let mut context = DummyContext;
         (&mut f).execute_action(
-            Arc::new(Value::none()),
-            Arc::new(Metadata::new()),
+            State::<Value>::new(),
             &a,
             context,
         );
+        assert!(called);
+        Ok(())
+    }
+
+    #[test]
+    fn test_command_i32() -> Result<(), Box<dyn std::error::Error>> {
+        let q = crate::parse::parse_query("abc")?;
+        let a = q.action().unwrap();
+        let mut called = false;
+        assert!(!called);
+        let mut f = || {
+            called = true;
+            123
+        };
+        let mut context = DummyContext;
+        let result = (&mut f).execute_action(
+            State::<Value>::new(),
+            &a,
+            context,
+        );
+        assert_eq!(result.unwrap().try_into_i32().unwrap(), 123);
         assert!(called);
         Ok(())
     }

@@ -221,6 +221,12 @@ impl From<i32> for Value {
     }
 }
 
+impl From<()> for Value {
+    fn from(value: ()) -> Value {
+        Value::none()
+    }
+}
+
 impl TryFrom<Value> for i64 {
     type Error = Error;
     fn try_from(value: Value) -> Result<Self, Self::Error> {
