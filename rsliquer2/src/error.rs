@@ -6,6 +6,7 @@ use std::fmt;
 pub enum Error {
     ArgumentNotSpecified,
     ActionNotRegistered { message: String },
+    CommandAlreadyRegistered { message: String },
     ParseError { message: String, position: Position },
     ParameterError { message: String, position: Position },
     ConversionError { message: String },
@@ -29,6 +30,7 @@ impl fmt::Display for Error {
             Error::General { message } => write!(f, "Error: {}", message),
             Error::CacheNotSupported => write!(f, "Error: Cache not supported"),
             Error::NotSupported { message } => write!(f, "Error: {}", message),
+            Error::CommandAlreadyRegistered { message } => write!(f, "Error: {}", message),
         }
     }
 }

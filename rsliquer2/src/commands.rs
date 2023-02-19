@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::state::State;
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -185,6 +186,7 @@ impl<V: ValueInterface> TryFromCommandParameter<V> for i32 {
     }
 }
 
+
 /*
 impl<V: ValueInterface + TryInto<i32>, C: Context<V>> TryFromCommandParameter<V, C> for i32 {
     fn try_from_check(
@@ -271,22 +273,22 @@ impl<V: ValueInterface> Context<V> for DummyContext {
     }
 }
 
-pub trait Command<V>
+pub trait Command<V,C>
 where
-    V: ValueInterface,
+    V: ValueInterface, C: Context<V>
 {
     fn call_command(
         &mut self,
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: &mut impl Context<V>,
+        context: &mut C,
     ) -> Result<V, Error>;
     fn execute_action(
         &mut self,
         state:State<V>,
         action: &ActionRequest,
-        context: &mut impl Context<V>,
+        context: &mut C,
     ) -> Result<V, Error> {
         let mut par: Vec<_> = action
             .parameters
@@ -297,17 +299,18 @@ where
     }
 }
 
-impl<F, V, R> Command<V> for F
+impl<F, V, R, C> Command<V,C> for F
 where
     F: FnMut() -> R,
-    V: ValueInterface + From<R>
+    V: ValueInterface + From<R>,
+    C: Context<V>
 {
     fn call_command(
         &mut self,
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: &mut impl Context<V>,
+        context: &mut C,
     ) -> Result<V, Error> {
         if parameters.is_empty() {
             if check{
@@ -351,18 +354,19 @@ impl<S,A1,R,F> From<F> for Command2<S,A1,R,F> where F:FnMut(S,A1) -> R{
     }
 }
 
-impl<V, S, R, F> Command<V> for Command1<S,R,F>
+impl<V, S, R, F, C> Command<V, C> for Command1<S,R,F>
 where
     F: FnMut(S) -> R,
     V: ValueInterface + From<R>,
-    S: TryFromCommandParameter<V>
+    S: TryFromCommandParameter<V>,
+    C: Context<V>
 {
     fn call_command(
         &mut self,
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: &mut impl Context<V>,
+        context: &mut C,
     ) -> Result<V, crate::error::Error> {
         if parameters.is_empty() {
             if check{
@@ -381,19 +385,20 @@ where
     }
 }
 
-impl<V, S, A1, R, F> Command<V> for Command2<S,A1,R,F>
+impl<V, S, A1, R, F, C> Command<V, C> for Command2<S,A1,R,F>
 where
     F: FnMut(S,A1) -> R,
     V: ValueInterface + From<R>,
     S: TryFromCommandParameter<V>,
-    A1: TryFromCommandParameter<V>
+    A1: TryFromCommandParameter<V>,
+    C: Context<V>
 {
     fn call_command(
         &mut self,
         state:State<V>,
         parameters: &[CommandParameter<V>],
         check:bool,
-        context: &mut impl Context<V>,
+        context: &mut C,
     ) -> Result<V, crate::error::Error> {
         if parameters.len() == 1 {
             if check{
@@ -415,6 +420,42 @@ where
         }
     }
 }
+
+
+
+struct CommandExcecutorRegistry<V, C> where C:Context<V>, V:ValueInterface{
+    reg:HashMap<String, HashMap<String, Box<dyn Command<V,C>>>>
+}
+
+impl<V,C> CommandExcecutorRegistry<V,C> where C:Context<V>, V:ValueInterface{
+    fn new()->Self{
+        CommandExcecutorRegistry{
+            reg:HashMap::new()
+        }
+    }
+    fn exists(self, name: &str, ns:&str) -> bool{
+        self.reg.get(name).map(|x| x.contains_key(ns)).unwrap_or(false)
+    }
+
+    /*        
+    fn register(&mut self, name:&str, ns:&str, command: Box<dyn Command<V, C>>) -> Result<(),Error>{
+        self.reg.get_mut(k)
+        if self.reg.contains_key(name){
+            if 
+            Err(Error::CommandAlreadyRegistered { message: format!() })
+        }
+    }
+    */
+}
+
+impl<V, C> Default for CommandExcecutorRegistry<V,C>
+where C:Context<V>, V:ValueInterface
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 
 
 #[cfg(test)]
