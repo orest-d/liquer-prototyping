@@ -1,10 +1,7 @@
-use nom_locate::position;
-
 use crate::error::Error;
 use crate::state::State;
 use std::convert::{TryFrom, TryInto};
 use std::marker::PhantomData;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::metadata::Metadata;
@@ -64,6 +61,13 @@ where
         match action {
             ActionParameter::String(s, p) => CommandParameter::String(s.to_owned(), p.to_owned()),
             ActionParameter::Link(q, p) => CommandParameter::Link(q.to_owned(), p.to_owned()),
+        }
+    }
+    pub fn position(&self) -> Position {
+        match self {
+            CommandParameter::String(_, p) => p.clone(),
+            CommandParameter::Link(_, p) => p.clone(),
+            CommandParameter::Value(_) => Position::unknown(),
         }
     }
 }
@@ -328,6 +332,25 @@ pub struct Command1<S,R,F> where F:FnMut(S) -> R{
     result:PhantomData<R>
 }
 
+impl<S,R,F> From<F> for Command1<S,R,F> where F:FnMut(S) -> R{
+    fn from(f: F) -> Self {
+        Command1 { f, state: Default::default(), result: Default::default() }
+    }
+}
+
+pub struct Command2<S,A1,R,F> where F:FnMut(S,A1) -> R{
+    f:F,
+    state:PhantomData<S>,
+    arg1:PhantomData<A1>,
+    result:PhantomData<R>
+}
+
+impl<S,A1,R,F> From<F> for Command2<S,A1,R,F> where F:FnMut(S,A1) -> R{
+    fn from(f: F) -> Self {
+        Command2 { f, state: Default::default(), arg1:Default::default(), result: Default::default() }
+    }
+}
+
 impl<V, S, R, F> Command<V> for Command1<S,R,F>
 where
     F: FnMut(S) -> R,
@@ -353,6 +376,41 @@ where
             Err(Error::ParameterError {
                 message: format!("Too many parameters"),
                 position: Position::unknown(),
+            })
+        }
+    }
+}
+
+impl<V, S, A1, R, F> Command<V> for Command2<S,A1,R,F>
+where
+    F: FnMut(S,A1) -> R,
+    V: ValueInterface + From<R>,
+    S: TryFromCommandParameter<V>,
+    A1: TryFromCommandParameter<V>
+{
+    fn call_command(
+        &mut self,
+        state:State<V>,
+        parameters: &[CommandParameter<V>],
+        check:bool,
+        context: &mut impl Context<V>,
+    ) -> Result<V, crate::error::Error> {
+        if parameters.len() == 1 {
+            if check{
+                S::try_from_state_check(&state, context, true)?;
+                A1::try_from_check(&parameters[0], context, true)?;
+                Ok(V::none())
+            }
+            else{
+                Ok(V::from((self.f)(
+                    S::try_from_state_check(&state, context, false)?,
+                    A1::try_from_check(&parameters[0], context, false)?,
+            )))
+            }
+        } else {
+            Err(Error::ParameterError {
+                message: format!("Exactly one parameter expected, {} provided", parameters.len()),
+                position: if parameters.is_empty() {Position::unknown()} else {parameters[1].position()} ,
             })
         }
     }
@@ -404,4 +462,51 @@ mod test {
         assert!(called);
         Ok(())
     }
+    #[test]
+    fn test_command1_i32() -> Result<(), Box<dyn std::error::Error>> {
+        let q = crate::parse::parse_query("abc")?;
+        let a = q.action().unwrap();
+        let mut called = false;
+        assert!(!called);
+        let mut f = |x:i32| {
+            called = true;
+            123+x
+        };
+        let mut context = DummyContext;
+        let value = Value::from(234);
+        let mut cmd = Command1::from(&mut f);
+        let state = State::new().with_data(value);
+        let result = cmd.execute_action(
+            state,
+            &a,
+            &mut context,
+        );
+        assert_eq!(result.unwrap().try_into_i32().unwrap(), 357);
+        assert!(called);
+        Ok(())
+    }
+    #[test]
+    fn test_command2_i32() -> Result<(), Box<dyn std::error::Error>> {
+        let q = crate::parse::parse_query("abc-321")?;
+        let a = q.action().unwrap();
+        let mut called = false;
+        assert!(!called);
+        let mut f = |x:i32, y:i32| {
+            called = true;
+            123+x+y
+        };
+        let mut context = DummyContext;
+        let value = Value::from(234);
+        let mut cmd = Command2::from(&mut f);
+        let state = State::new().with_data(value);
+        let result = cmd.execute_action(
+            state,
+            &a,
+            &mut context,
+        );
+        assert_eq!(result.unwrap().try_into_i32().unwrap(), 678);
+        assert!(called);
+        Ok(())
+    }
+
 }
