@@ -93,6 +93,7 @@ def aa(p, name):
 
 
 
+identifier = aa(Regex(r"[a-zA-Z0-9_]+"),"ID")
 text_element = Text.from_parser(Regex(r"[a-zA-Z0-9,;:\(\).?!]+").leaveWhitespace())
 whitespace_element = Text.from_parser(Regex(r"[ \t]+").leaveWhitespace())
 nextline = aa(Regex(r"\\(\r|\n)").leaveWhitespace(),"NL")
@@ -110,6 +111,7 @@ local_reference = aa((link_text + Literal("(").suppress()
         + Regex(r"#[^\n^\r^\(^\)]+")
         + Literal(")").suppress()
 ), "LOCAL_REF")
+anchor= aa(Regex("{\s*#")+identifier+Literal("}"), "ANCHOR")
 
 
 rich_text = aa(OneOrMore(text_element|whitespace_element|nextline|emphasis|bold|code|link1|link2|local_reference),"RichText")
@@ -118,6 +120,9 @@ text_line = aa(text_line_start + ZeroOrMore(rich_text) + LineEnd(),"Line")
 text_line_l1 = aa(Literal("  ")+text_line,"TXT1")
 text_line_l2 = aa(Literal("    ")+text_line,"TXT2")
 text_line_l3 = aa(Literal("      ")+text_line,"TXT3")
+empty_line = aa(Regex(r"\s*[\n\r]").leaveWhitespace(),"EMPTY_LINE")
+hrule=aa(LineStart()+Regex("---*")+LineEnd(),"HRULE")
+paragraph = aa(ZeroOrMore(text_line)+(hrule|empty_line), "PARAGRAPH")
 
 star_list_element_l1 = aa(Literal("* ")+text_line.leaveWhitespace()+ZeroOrMore(text_line_l1.leaveWhitespace()).leaveWhitespace(),"SLE1")
 dash_list_element_l1 = aa(Literal("- ")+text_line.leaveWhitespace()+ZeroOrMore(text_line_l1.leaveWhitespace()).leaveWhitespace(),"DLE1")
@@ -136,13 +141,29 @@ star_list_item_l1 = aa(star_list_element_l1 + Optional(list_l2),"SLI1")
 dash_list_item_l1 = aa(dash_list_element_l1 + Optional(list_l2),"DLI1")
 list_l1 = aa((OneOrMore(star_list_item_l1))|(OneOrMore(dash_list_item_l1)),"L1")
 
-identifier = aa(Regex(r"[a-zA-Z0-9_]+"),"ID")
 code_element=Regex(r"(`[^`]+)|(``[^`]+)|([^`]+)")
 code_block = aa((
     Literal("```")+Optional(identifier)+LineEnd()+
     ZeroOrMore(code_element)+
     Literal("```")
     ).leaveWhitespace(),"CODEBLOCK")
+
+title = aa(OneOrMore(text_element|whitespace_element|nextline|emphasis|bold|code), "TITLE")
+header_l1=aa(Regex("#\s*")+title+Optional(anchor),"HEAD1")
+header_l2=aa(Regex("##\s*")+title+Optional(anchor),"HEAD2")
+header_l3=aa(Regex("###\s*")+title+Optional(anchor),"HEAD3")
+header_l4=aa(Regex("####\s*")+title+Optional(anchor),"HEAD4")
+header_l5=aa(Regex("#####\s*")+title+Optional(anchor),"HEAD5")
+
+text = aa(ZeroOrMore(text_line|list_l1|hrule|empty_line), "TEXT")
+
+section_l5 = aa(header_l5+text, "SEC5")
+section_l4 = aa(header_l4+text+ZeroOrMore(section_l5), "SEC4")
+section_l3 = aa(header_l3+text+ZeroOrMore(section_l4), "SEC3")
+section_l2 = aa(header_l2+text+ZeroOrMore(section_l3), "SEC2")
+section_l1 = aa(header_l1+text+ZeroOrMore(section_l2), "SEC1")
+
+document = aa(text+ZeroOrMore(section_l1),"DOC")
 
 #print(emphasis.parseString("*Hello, world!*"))
 #print(text_line.parseString("*Hello, world!*"))
@@ -170,3 +191,17 @@ some
 code
 ```""")))
 print(text_line.parseString("  [Hello](http://example.com), *world*! [anchor](#anchor)"))
+print()
+print(document.parseString("""abc
+#Sec 1
+def
+
+xxx
+# Sec 2
+## Sec 2.1
+## Sec 2.2
+### Sec 2.2.1
+xxx
+## Sec 2.3
+223
+"""))
