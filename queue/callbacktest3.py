@@ -28,6 +28,12 @@ class Aaa:
 _workers=[]
 
 def worker_process(jq, worker_id):
+    def callback(result, arg, worker_id):
+        print(f"Worker Callback {arg} {result} {worker_id}")
+        print(f"  called from {multiprocessing.current_process().name}")
+    jq.add_callback("Job0", callback, f"ARG-{worker_id}-0")
+    jq.add_callback("Job1", callback, f"ARG-{worker_id}-1")
+    jq.add_callback("Job2", callback, f"ARG-{worker_id}-2")
     while True:
         job = jq.get_job()
         print(f"Worker {worker_id} got job {job}")
@@ -81,10 +87,21 @@ class JobQueue:
         #print(self.results)
         return self.results.get(job, None)
 
+    def add_callback(self, job, callback, arg):
+        if job not in self.callbacks:
+            self.callbacks[job] = []
+        print(f"Adding callback {len(self.callbacks)}:{len(self.callbacks[job])} for job {job}/{arg}")
+        self.callbacks[job].append((callback,arg))
+
 #MyManager.register('JobQueue', JobQueue, exposed=('submit', 'get', 'set'))
 MyManager.register('JobQueue', JobQueue)
 MyManager.register('Aaa', Aaa)
 
+def callback(result, arg, worker_id):
+    print(f"MAIN Callback {arg} {result} {worker_id}")
+    print(f"  called from {multiprocessing.current_process().name}")
+
+MyManager.register('callback', callback)
 
 def run(aaa):
     print(f"run {aaa}")
@@ -108,7 +125,12 @@ if __name__ == '__main__':
         print("---")
         print("---")
 
+      
         jq = manager.JobQueue()
+
+        jq.add_callback("Job0", manager.callback, f"MAIN-0")
+        jq.add_callback("Job1", manager.callback, f"MAIN-1")
+        jq.add_callback("Job2", manager.callback, f"MAIN-2")
         start_workers(jq)
         jq.set("X", "ResultX", "MAIN")
         for i in range(4):
