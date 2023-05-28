@@ -3,6 +3,7 @@
 import asyncio
 from enum import Enum
 from multiprocessing.managers import BaseManager
+import random
 from typing import Any
 import webbrowser
 import tornado
@@ -92,8 +93,8 @@ class JobManager(BaseManager):
     pass
 
 
-JobManager.register("create_job_queue", callable=lambda: JobQueue())
-
+JobManager.register("create_job_queue", callable=lambda: MasterJobQueue())
+JobManager.register("create_worker_registry", callable=lambda n=2: WorkerRegistry(n))
 
 class JobStatus(Enum):
     """Job status in a job queue"""
@@ -107,7 +108,7 @@ class JobStatus(Enum):
     COMPLETED = "completed"  # Job is completed
     FAILED = "failed"  # Job failed
 
-    def done(self):
+    def is_done(self):
         """Check if the job is done"""
         return self == JobStatus.COMPLETED or self == JobStatus.FAILED
 
@@ -132,12 +133,12 @@ class WorkerInfo:
 @dataclass
 class JobInfo:
     query: str
-    status: JobStatus = JobStatus.UNKNOWN
+    worker_id: str
     start_time: float
     last_update_time: float
+    status: JobStatus = JobStatus.UNKNOWN
     result: Any = None
     error: Any = None
-    worker_id: str
     dependency: str = None
     message: str = None
 
@@ -163,14 +164,14 @@ class JobInfo:
         self.status = JobStatus.QUEUED
         return self.ping()
 
-    def assigned(self, worker_id):
+    def assign_to(self, worker_id):
         assert self.status == JobStatus.QUEUED
         self.status = JobStatus.ASSIGNED
         self.worker_id = worker_id
         return self.ping()
     
     def running(self):
-        assert self.status == JobStatus.ASSIGNED and self.worker_id is not None
+        assert (self.status == JobStatus.ASSIGNED or self.status == JobStatus.WAITING) and self.worker_id is not None
         self.status = JobStatus.RUNNING
         return self.ping()
 
@@ -181,6 +182,8 @@ class JobInfo:
         return self.ping()
     
     def completed(self, result):
+        print(f"Changing Job {self.query} to completed")
+        print(f"  Job {self.query} status is {self.status}")
         assert self.status == JobStatus.RUNNING
         self.status = JobStatus.COMPLETED
         self.result = result
@@ -194,6 +197,9 @@ class JobInfo:
         self.result = None
         return self.ping()
     
+    def is_done(self):
+        return self.status.is_done()
+    
 class WorkerRegistry:
     def __init__(self, num_workers):
         self.num_workers = num_workers
@@ -202,18 +208,44 @@ class WorkerRegistry:
 
     def get(self, worker_id):
         return self.workers[worker_id]
-    
+
+    def register_worker(self, worker_id, channel):
+        self.workers[worker_id] = WorkerInfo(
+            worker_id=worker_id,
+            start_time=time.time(),
+            last_update_time=time.time(),
+            channel=channel,
+            process=None,
+        )       
+
     def new_worker_id(self):
         """Returns a new identifier"""
         self.id_num += 1
         return f"Worker_{self.id_num}"
 
-    def new_worker(self, jq):
+    def new_worker_old(self, jq):
         """Create and starts one new worker"""
         (parent_channel, child_channel) = multiprocessing.Pipe()
         worker_id = self.new_worker_id()
         p = multiprocessing.Process(
-            target=worker_process, args=(jq, worker_id, child_channel)
+            target=worker_process_old, args=(jq, worker_id, child_channel)
+        )
+        p.start()
+        # jq.register_channel(worker_id, parent_channel)
+        self.workers[worker_id] = WorkerInfo(
+            worker_id=worker_id,
+            start_time=time.time(),
+            last_update_time=time.time(),
+            channel=parent_channel,
+            process=p,
+        )
+
+    def new_worker(self):
+        """Create and starts one new worker"""
+        (parent_channel, child_channel) = multiprocessing.Pipe()
+        worker_id = self.new_worker_id()
+        p = multiprocessing.Process(
+            target=worker_process, args=(worker_id, child_channel)
         )
         p.start()
         # jq.register_channel(worker_id, parent_channel)
@@ -262,7 +294,8 @@ class JobRegistry(object):
     def __len__(self):
         return len(self.jobs)
 
-def execute_job(jq, worker_id, job, channel):
+def execute_job(jq, job):
+    print(f"Executing {job}")
     try:
         i = int(job[3:])
     except:
@@ -271,18 +304,21 @@ def execute_job(jq, worker_id, job, channel):
     if i:
         dependency_job = f"Job{i-1}"
         print(f"{job} depends on {dependency_job}")
-        jq.request(worker_id, dependency_job)
+        jq.submit(dependency_job)
     time.sleep(random.random() * 0.1)
     #    if type(dependency) == str:
     #        dependency_value = dependency
     #    else:
     #        dependency_value = dependency.get()
+    dependency_value = "-not available-"
     if i:
-        dependency_value = channel.recv()
+        dependency_value = str(jq.wait_for(dependency_job).result)
         print(f"Dependency {dependency_job} received {dependency_value}")
     else:
+        print(f"No Dependency for {job}")
         dependency_value = "~"
 
+    print(f"Returning result for {job}")
     return "Result-" + job + "(" + dependency_value + ")"
 
 
@@ -292,10 +328,12 @@ class WorkerJobQueue:
         self.master_job_queue = master_job_queue
         self.channel = channel
         self.local_jobs = JobRegistry()
+        self.current_job=None
 
     def get_job(self):
         """Returns the next job for the worker"""
-        return self.master_job_queue.get_job_for(self.worker_id)
+        self.current_job = self.master_job_queue.get_job_for(self.worker_id)
+        return self.current_job
     
     def get_status(self, query):
         """Returns the status of the given job"""
@@ -311,7 +349,7 @@ class WorkerJobQueue:
             return False
         else:
             self.local_jobs.add(query, JobStatus.UNKNOWN)
-        self.master_job_queue.workers.request(self.worker_id, query)
+        self.master_job_queue.worker_request(self.worker_id, query)
         return True
 
     def get_result(self, query):
@@ -322,6 +360,9 @@ class WorkerJobQueue:
 
     def set_result(self, query, result):
         """Sets the result of the given job"""
+        print(f"WorkerJobQueue {self.worker_id} received result {result} for {query}")
+        if not self.local_jobs.contains(query):
+            self.local_jobs.add(query, JobStatus.RUNNING)
         self.local_jobs[query].completed(result)
         self.master_job_queue.set_result(query, result)
 
@@ -343,36 +384,78 @@ class WorkerJobQueue:
     
     def wait_for(self, query):
         """Waits until the given job is done"""
-        if not self.jobs.contains(query):
+        self.master_job_queue.set_waiting(self.current_job, query)
+        if not self.local_jobs.contains(query):
             self.submit(query)
 
-        while self.jobs[query].status.done() is False:
+        while self.local_jobs[query].is_done() is False:
             self.receive_one_event()
+        self.master_job_queue.set_running(self.current_job)
 
-        return self.jobs[query]
+        return self.local_jobs[query]
 
-def worker_process(jq, worker_id, channel):
+def worker_process_old(jq, worker_id, channel):
+    wjq = WorkerJobQueue(worker_id, jq, channel)
     while True:
-        job = jq.get_job()
+        job = wjq.get_job()
+        if job is None:
+            print(f"None job, Broken queue? worker: {worker_id}")
+            continue
         print(f"Worker {worker_id} got job {job}")
-        result = execute_job(jq, worker_id, job, channel)
-        jq.set(job, result, worker_id)
+        jq.set_running(job)
+        result = execute_job(wjq, job)
+        wjq.set_result(job, result)
+        print(f"Worker {worker_id} finished job {job}")
+
+def worker_process(worker_id, channel):
+    print(f"Worker {worker_id} started")
+    jq = channel.recv()
+    print(f"Worker {worker_id} obtained job queue")
+    wjq = WorkerJobQueue(worker_id, jq, channel)
+    while True:
+        job = wjq.get_job()
+        if job is None:
+            print(f"None job, Broken queue? worker: {worker_id}")
+            continue
+        print(f"Worker {worker_id} got job {job}")
+        jq.set_running(job)
+        result = execute_job(wjq, job)
+        wjq.set_result(job, result)
         print(f"Worker {worker_id} finished job {job}")
 
 
 class MasterJobQueue:
-    def __init__(self, number_of_workers=2):
+    def __init__(self, number_of_workers=4):
         """Initializes the job queue with the given number of workers"""
         self.queue = multiprocessing.Queue()
         self.workers = WorkerRegistry(number_of_workers)
         self.jobs = JobRegistry()
         self.requests = {}
+        self.callbacks = {}
 
+    def start_workers(self):
+        self.workers.start_workers()
+    
+    def channels(self):
+        ch=[]
+        for w in self.workers.workers.values():
+            print(w)
+            ch.append(w.channel)
+        return ch
+    
+#    def set_workers(self, workers):
+#        """Sets the worker registry"""
+#        self.workers = workers
+
+#    def register_worker(self, worker_id, channel):
+#        """Registers a new worker"""
+#        self.workers.register_worker(worker_id, channel)
 
     def get_job_for(self, worker_id):
         """Returns the next job"""
         query = self.queue.get()
-        self.jobs[query].assign(worker_id)
+        print(f"MasterJobQueue: Worker {worker_id} is getting job {query}")
+        self.jobs[query].assign_to(worker_id)
         return query
     
     def assign_to(self, worker_id, query):
@@ -381,7 +464,7 @@ class MasterJobQueue:
             self.submit(query)
         info = self.jobs[query]
         if info.status == JobStatus.QUEUED:
-            info.assign(worker_id)
+            info.assign_to(worker_id)
             return True
         return False
 
@@ -394,7 +477,7 @@ class MasterJobQueue:
         info = self.jobs.get(query)
         self.workers.get(worker_id).channel.send(info)
 
-        if not info.done():
+        if not info.is_done():
             self.requests[query] = self.requests.get(query, set())
             self.requests[query].add(worker_id)
     
@@ -402,36 +485,73 @@ class MasterJobQueue:
         """Returns the status of the given job"""
         return self.jobs[query].status
     
+    def set_running(self, query):
+        """Sets the given job to running"""
+        print(f"MasterJobQueue: Setting {query} to running")
+        self.jobs[query].running()
+        self.notify(query)
+
+    def set_waiting(self, query, dependency):
+        """Sets the given job to waiting for dependency"""
+        print(f"MasterJobQueue: Setting {query} to waiting for {dependency}")
+        self.jobs[query].waiting(dependency)
+        self.notify(query)
+    
     def submit(self, query):
         """Submits a new job to the queue"""
-        if self.job.has(query):
+        print(f"Submitting {query}")
+        if self.jobs.contains(query):
             return False
         self.jobs.add(query, JobStatus.QUEUED)
-        self.queue.put(query)
+        self.queue.put(query)        
         return True
+
+    def add_callback(self, query, callback):
+        """Adds a callback to the given job"""
+        if not self.jobs.contains(query):
+            self.submit(query)
+        if query not in self.callbacks:
+            self.callbacks[query] = []
+        self.callbacks[query].append(callback)
+
+    def notify(self, query):
+        print(f"MasterJobQueue: Notifying {query}")
+        info = self.jobs.get(query)
+        print(f"  - Status {info.status}")
+        if info.is_done():
+            print(f"  - Done {query}")
+            for worker_id in self.requests.get(query, set()):
+                print(f"  - Notifying {worker_id} about {query} status {info.status}")
+                self.workers.get(worker_id).channel.send(info)
+            if query in self.callbacks:
+                for callback in self.callbacks[query]:
+                    print(f"  - Calling {callback}")
+                    callback(info)
+                print(f"  - removing callbacks for {query}")
+                del self.callbacks[query]
 
     def get_result(self, job):
         """Returns the result of the given job"""
         return self.jobs.get(job).result
 
-    def notify(self, query):
-        info = self.jobs.get(query)
-        for worker_id in self.requests.get(query, set()):
-            self.workers.get(worker_id).channel.send(info)
-
     def set_result(self, query, result):
         """Sets the result of the given job"""
-        self.jobs[query].completed(result)
+        print(f"MasterJobQueue received result {result} for {query}")
+        if not self.jobs.contains(query):
+            print(f"MasterJobQueue: Job {query} not found")
+        else:
+            print(f"MasterJobQueue: Job {query} will be labeled as completed")
+            self.jobs[query].completed(result)
         self.notify(query)
 
-    def get_error(self, job):
+    def get_error(self, query):
         """Returns the error of the given job"""
-        return self.jobs.get(job).error
+        return self.jobs.get(query).error
 
-    def set_error(self, job, error):
+    def set_error(self, query, error):
         """Sets the error of the given job"""
-        self.jobs[job].failed(error)
-        self.notify(job)
+        self.jobs[query].failed(error)
+        self.notify(query)
 
 ##########################################################################################
 
@@ -464,11 +584,28 @@ def get_executor():
     return _executor
 
 
+#if __name__ == "__main__":
+#    webbrowser.open("http://localhost:8888")
+#    # asyncio.run(main())
+#
+#    app = make_app()
+#    app.listen(8888)
+#
+#    tornado.ioloop.IOLoop.current().start()
+
 if __name__ == "__main__":
-    webbrowser.open("http://localhost:8888")
-    # asyncio.run(main())
+    with JobManager() as manager:
+#        workers = manager.create_worker_registry()
+#        workers = WorkerRegistry(2)
+        jq = manager.create_job_queue()
+        jq.start_workers()
+        channels = jq.channels()
+        print(f"Channels: {channels}")
+        for ch in channels:
+            ch.send(jq)
 
-    app = make_app()
-    app.listen(8888)
+#        workers.start_workers()
+#        jq.set_workers(workers)
 
-    tornado.ioloop.IOLoop.current().start()
+        jq.submit("Job2")
+        input("Press enter to continue")
