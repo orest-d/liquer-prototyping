@@ -2,7 +2,7 @@
 
 import asyncio
 from enum import Enum
-from multiprocessing.managers import BaseManager
+from multiprocessing.managers import BaseManager, SyncManager
 import random
 import traceback
 from typing import Any
@@ -90,7 +90,7 @@ class ProcessHandler2a(tornado.web.RequestHandler):
 ##########################################################################################
 
 
-class JobManager(BaseManager):
+class JobManager(SyncManager):
     pass
 
 
@@ -276,6 +276,14 @@ class WorkerRegistry:
         while len(self.workers) < self.num_workers:
             self.new_worker()
 
+    def stop_workers(self):
+        """Stops all workers"""
+        for w in self.workers.values():
+            if w.process is not None:
+                w.process.terminate()
+                w.process.join()
+        self.workers = {}
+
 
 class JobRegistry(object):
     def __init__(self):
@@ -448,7 +456,8 @@ def worker_process(worker_id, channel):
     while True:
         job = wjq.get_job()
         if job is None:
-            print(f"None job, Broken queue? worker: {worker_id}")
+            print(f"{worker_id} idle")
+            time.sleep(0.5)
             continue
         print(f"Worker {worker_id} got job {job}")
         jq.set_running(job)
@@ -467,7 +476,6 @@ class MasterJobQueue:
         self.workers = WorkerRegistry(number_of_workers)
         self.jobs = JobRegistry()
         self.requests = {}
-        self.callbacks = {}
 
     def report(self):
         """Reports the status of the job queue"""
@@ -481,13 +489,16 @@ class MasterJobQueue:
                 str(job.dependency or ""),
                 str(job.result or "") + str(job.error or ""),
             )
-        text+=f"Queue: {len(self.queue)}\n"
-        text+=f"  {self.queue}\n"
+        text += f"Queue: {len(self.queue)}\n"
+        text += f"  {self.queue}\n"
         text += "==============================================\n"
         return text
 
     def start_workers(self):
         self.workers.start_workers()
+
+    def stop_workers(self):
+        self.workers.stop_workers()
 
     def channels(self):
         ch = []
@@ -508,7 +519,8 @@ class MasterJobQueue:
         """Returns the next job"""
         print(f"Getting next job for worker {worker_id}")
         if len(self.queue) == 0:
-            print(f"No more jobs at the moment")
+            #            print(f"No more jobs at the moment")
+            #            exit(0)
             return None
         query = self.queue.pop(0)
         print(f"MasterJobQueue: Worker {worker_id} is getting job {query}")
@@ -564,14 +576,6 @@ class MasterJobQueue:
         self.queue.append(query)
         return True
 
-    def add_callback(self, query, callback):
-        """Adds a callback to the given job"""
-        if not self.jobs.contains(query):
-            self.submit(query)
-        if query not in self.callbacks:
-            self.callbacks[query] = []
-        self.callbacks[query].append(callback)
-
     def notify(self, query):
         print(f"MasterJobQueue: Notifying {query}")
         print(self.report())
@@ -579,15 +583,13 @@ class MasterJobQueue:
         print(f"  - Status {info.status}")
         if info.is_done():
             print(f"  - Done {query}")
-            for worker_id in self.requests.get(query, set()):
-                print(f"  - Notifying {worker_id} about {query} status {info.status}")
-                self.workers.get(worker_id).channel.send(info)
-            if query in self.callbacks:
-                for callback in self.callbacks[query]:
-                    print(f"  - Calling {callback}")
-                    callback(info)
-                print(f"  - removing callbacks for {query}")
-                del self.callbacks[query]
+            if query in self.requests:
+                for worker_id in self.requests.get(query, set()):
+                    print(
+                        f"  - Notifying {worker_id} about {query} status {info.status}"
+                    )
+                    self.workers.get(worker_id).channel.send(info)
+                del self.requests[query]
 
     def get_result(self, job):
         """Returns the result of the given job"""
@@ -668,4 +670,15 @@ if __name__ == "__main__":
         #        jq.set_workers(workers)
 
         jq.submit("Job2")
-        input("Press enter to continue")
+        jq.submit("Job3")
+        while jq.get_status("Job2") != JobStatus.COMPLETED:
+            print("Waiting for Job2")
+            time.sleep(1)
+        while jq.get_status("Job3") != JobStatus.COMPLETED:
+            print("Waiting for Job3")
+            time.sleep(1)
+        print("Result 2:", jq.get_result("Job2"))
+        print("Result 3:", jq.get_result("Job3"))
+
+        jq.stop_workers()
+        input("Press enter to continue...")
