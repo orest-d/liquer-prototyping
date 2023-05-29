@@ -24,6 +24,7 @@ class IndexHandler(tornado.web.RequestHandler):
 <h1>Test</h1>
 <ul>
 <li><a href="/">Home</a></li>
+<li><a href="/report.txt" target="_blank">Report</a></li>
 <li><a href="/test1a.txt" target="_blank">Test 1a</a></li>
 <li><a href="/test1b.txt" target="_blank">Test 1b</a></li>
 <li><a href="/test2a.txt" target="_blank">Test 2a</a></li>
@@ -86,6 +87,24 @@ class ProcessHandler2a(tornado.web.RequestHandler):
 
         self.write(f"""Result 2A: {result}\n""")
 
+class JobHandler(tornado.web.RequestHandler):
+    async def get(self, query):
+        self.write(f"""Job handler {query}\n""")
+        print(f"""Job handler {query}\n""")
+
+        #result = "NORESULT"
+        get_job_queue().submit(query)
+        result = await wait_for(query)
+
+        self.write(f"""Result for {query}: {result}\n""")
+
+class ReportHandler(tornado.web.RequestHandler):
+    async def get(self):
+        self.write(f"""<html><body><h1>Report</h1>\n""")
+        self.write(f"<pre><code>")
+        self.write(get_job_queue().report())
+        self.write(f"</code></pre>")
+        self.write(f"""</body></html>\n""")
 
 ##########################################################################################
 
@@ -197,7 +216,7 @@ class JobInfo:
     def completed(self, result):
         print(f"Changing Job {self.query} to completed")
         print(f"  Job {self.query} status is {self.status}")
-        assert self.status == JobStatus.RUNNING
+#        assert self.status == JobStatus.RUNNING
         self.status = JobStatus.COMPLETED
         self.result = result
         self.error = None
@@ -470,7 +489,7 @@ def worker_process(worker_id, channel):
 
 
 class MasterJobQueue:
-    def __init__(self, number_of_workers=2):
+    def __init__(self, number_of_workers=4):
         """Initializes the job queue with the given number of workers"""
         self.queue = []
         self.workers = WorkerRegistry(number_of_workers)
@@ -622,6 +641,8 @@ def make_app():
     return tornado.web.Application(
         [
             (r"/", IndexHandler),
+            (r"/job/(.*)", JobHandler),
+            (r"/report.txt", ReportHandler),
             (r"/test1a.txt", ProcessHandler1a),
             (r"/test1b.txt", ProcessHandler1b),
             (r"/test2a.txt", ProcessHandler2a),
@@ -656,8 +677,10 @@ def get_executor():
 #    tornado.ioloop.IOLoop.current().start()
 
 
-async def wait_for(query, jq):
+async def wait_for(query, jq=None):
     print(f"Waiting for {query}")
+    if jq is None:
+        jq = get_job_queue()
     while not jq.get_status(query).is_done():
         print(f"Sleep {query}",jq.get_status(query))
         await asyncio.sleep(0.1)
@@ -694,6 +717,35 @@ async def main():
         jq.stop_workers()
         input("Press enter to continue...")
 
+_jq=None
+_manager = None
+
+def get_manager():
+    global _manager
+    if _manager is None:
+        _manager = JobManager()
+        _manager.start()
+    return _manager
+
+def get_job_queue():
+    global _jq
+    if _jq is None:
+        manager = get_manager()
+
+        _jq = manager.create_job_queue()
+        _jq.start_workers()
+        channels = _jq.channels()
+        for ch in channels:
+            ch.send(_jq)
+    return _jq
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    webbrowser.open("http://localhost:8888")
+    #asyncio.run(main())
+
+    jq=get_job_queue()
+
+    app = make_app()
+    app.listen(8888)
+
+    tornado.ioloop.IOLoop.current().start()
