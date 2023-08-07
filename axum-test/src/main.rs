@@ -8,9 +8,10 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
+pub mod metadata;
+pub mod store;
 
 use axum::extract::Path;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 enum StatusCode {
