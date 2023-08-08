@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::metadata::{Metadata, MetadataRecord, self};
+use crate::metadata::{self, Metadata, MetadataRecord};
 
 #[derive(Debug, Clone)]
 pub struct Key(String);
@@ -15,6 +15,9 @@ impl Key {
     }
     pub fn has_prefix<S: AsRef<str>>(&self, prefix: S) -> bool {
         self.0.starts_with(prefix.as_ref())
+    }
+    pub fn join<S: AsRef<str>>(&self, name: S) -> Self {
+        Self(format!("{}/{}", self.0, name.as_ref()))
     }
 }
 
@@ -50,8 +53,13 @@ trait Store {
     }
 
     /// Key prefix common to all keys in this store.
+    // TODO: Use only root_key
     fn key_prefix(&self) -> &str {
         ""
+    }
+
+    fn root_key(&self) -> Key {
+        Key::new(self.key_prefix())
     }
 
     /// Create default metadata object for a given key
@@ -137,8 +145,10 @@ trait Store {
     }
 
     /// List or iterator of all keys
-    fn keys(&self) -> Vec<Key> {
-        vec![]
+    fn keys(&self) -> Result<Vec<Key>, StoreError> {
+        let mut keys = self.listdir_keys_deep(&self.root_key())?;
+        keys.push(self.root_key().to_owned());
+        Ok(keys)
     }
 
     /// Return names inside a directory specified by key.
@@ -149,9 +159,26 @@ trait Store {
     }
 
     /// Return keys inside a directory specified by key.
-    // TODO: implement using listdir
-    fn listdir_keys(&self, key: &Key) -> Vec<Key> {
-        vec![]
+    /// Only keys present directly in the directory are returned,
+    /// subdirectories are not traversed.
+    fn listdir_keys(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
+        let names = self.listdir(key)?;
+        Ok(names.iter().map(|x| {key.join(x)}).collect())
+    }
+
+    /// Return keys inside a directory specified by key.
+    /// Keys directly in the directory are returned,
+    /// as well as in all the subdirectories.
+    fn listdir_keys_deep(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
+        let keys = self.listdir_keys(key)?;
+        let mut keys_deep = keys.clone();
+        for sub_key in keys{
+            if self.is_dir(&key){
+                let sub = self.listdir_keys_deep(&sub_key)?;
+                keys_deep.extend(sub.into_iter());
+            }
+        }
+        Ok(keys_deep)
     }
 
     /// Make a directory
@@ -227,7 +254,7 @@ pub struct FileStore {
 }
 
 impl FileStore {
-    const METADATA:&str = ".__metadata__" ;
+    const METADATA: &str = ".__metadata__";
     pub fn new(path: &str, prefix: &str) -> FileStore {
         FileStore {
             path: PathBuf::from(path),
@@ -334,12 +361,10 @@ impl Store for FileStore {
         let mut file = File::create(path)
             .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
         let metadata = match metadata {
-            Metadata::MetadataRecord(metadata) => {
-                serde_json::to_writer_pretty(file, metadata).map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?
-            },
-            Metadata::LegacyMetadata(metadata) => {
-                serde_json::to_writer_pretty(file, metadata).map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?
-            },
+            Metadata::MetadataRecord(metadata) => serde_json::to_writer_pretty(file, metadata)
+                .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?,
+            Metadata::LegacyMetadata(metadata) => serde_json::to_writer_pretty(file, metadata)
+                .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?,
         };
         Ok(())
     }
@@ -387,40 +412,35 @@ impl Store for FileStore {
         false
     }
 
-    fn keys(&self) -> Vec<Key> {
-        vec![]
-    }
-
     fn listdir(&self, key: &Key) -> Result<Vec<String>, StoreError> {
         let path = self.key_to_path(key);
         if path.exists() {
-            let dir =path.read_dir()
-            .map_err(|_| StoreError::KeyReadError(key.to_owned(), self.store_name()))?; 
-            let names = dir.flat_map(|entry| {
-                entry
-                    .ok()
-                    .map(|e| e.file_name().to_string_lossy().to_string())
-            })
-            .filter(|name| !name.ends_with(Self::METADATA))
-            .collect();
+            let dir = path
+                .read_dir()
+                .map_err(|_| StoreError::KeyReadError(key.to_owned(), self.store_name()))?;
+            let names = dir
+                .flat_map(|entry| {
+                    entry
+                        .ok()
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                })
+                .filter(|name| !name.ends_with(Self::METADATA))
+                .collect();
             return Ok(names);
         }
         Err(StoreError::KeyNotFound(key.to_owned()))
     }
 
-    fn listdir_keys(&self, key: &Key) -> Vec<Key> {
-        vec![]
-    }
-
     fn makedir(&self, key: &Key) -> Result<(), StoreError> {
-        Err(StoreError::KeyNotSupported(
-            key.to_owned(),
-            self.store_name(),
-        ))
+        let path = self.key_to_path(key);
+        std::fs::create_dir_all(path).map_err(|_| {
+            StoreError::KeyWriteError(key.to_owned(), self.store_name())
+        })?;
+        Ok(())
     }
 
     fn is_supported(&self, key: &Key) -> bool {
-        false
+        key.has_prefix(&self.prefix)
     }
 }
 
