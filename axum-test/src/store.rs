@@ -1,11 +1,11 @@
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::metadata::{Metadata, MetadataRecord};
+use crate::metadata::{Metadata, MetadataRecord, self};
 
 #[derive(Debug, Clone)]
 pub struct Key(String);
@@ -132,7 +132,7 @@ trait Store {
     }
 
     /// Returns true if key points to a directory.
-    fn is_dir(&self, key: Key) -> bool {
+    fn is_dir(&self, key: &Key) -> bool {
         false
     }
 
@@ -144,8 +144,8 @@ trait Store {
     /// Return names inside a directory specified by key.
     /// To get a key, names need to be joined with the key (key/name).
     /// Complete keys can be obtained with the listdir_keys method.
-    fn listdir(&self, key: &Key) -> Vec<String> {
-        vec![]
+    fn listdir(&self, key: &Key) -> Result<Vec<String>, StoreError> {
+        Ok(vec![])
     }
 
     /// Return keys inside a directory specified by key.
@@ -227,6 +227,7 @@ pub struct FileStore {
 }
 
 impl FileStore {
+    const METADATA:&str = ".__metadata__" ;
     pub fn new(path: &str, prefix: &str) -> FileStore {
         FileStore {
             path: PathBuf::from(path),
@@ -242,7 +243,7 @@ impl FileStore {
 
     pub fn key_to_path_metadata(&self, key: &Key) -> PathBuf {
         let mut path = self.path.clone();
-        path.push(format!("{}.__metadata__", key));
+        path.push(format!("{}{}", key, Self::METADATA));
         path
     }
 }
@@ -319,38 +320,70 @@ impl Store for FileStore {
     }
 
     fn set(&mut self, key: &Key, data: &[u8], metadata: &Metadata) -> Result<(), StoreError> {
-        Err(StoreError::KeyNotSupported(
-            key.to_owned(),
-            self.store_name(),
-        ))
+        let path = self.key_to_path(key);
+        let mut file = File::create(path)
+            .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        file.write_all(data)
+            .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        self.set_metadata(key, metadata)?;
+        Ok(())
     }
 
     fn set_metadata(&mut self, key: &Key, metadata: &Metadata) -> Result<(), StoreError> {
-        Err(StoreError::KeyNotSupported(
-            key.to_owned(),
-            self.store_name(),
-        ))
+        let path = self.key_to_path_metadata(key);
+        let mut file = File::create(path)
+            .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        let metadata = match metadata {
+            Metadata::MetadataRecord(metadata) => {
+                serde_json::to_writer_pretty(file, metadata).map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?
+            },
+            Metadata::LegacyMetadata(metadata) => {
+                serde_json::to_writer_pretty(file, metadata).map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?
+            },
+        };
+        Ok(())
     }
 
     fn remove(&mut self, key: &Key) -> Result<(), StoreError> {
-        Err(StoreError::KeyNotSupported(
-            key.to_owned(),
-            self.store_name(),
-        ))
+        let path = self.key_to_path(key);
+        if path.exists() {
+            std::fs::remove_file(path)
+                .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        }
+        let matadata_path = self.key_to_path_metadata(key);
+        if matadata_path.exists() {
+            std::fs::remove_file(matadata_path)
+                .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        }
+        Ok(())
     }
 
     fn removedir(&mut self, key: &Key) -> Result<(), StoreError> {
-        Err(StoreError::KeyNotSupported(
-            key.to_owned(),
-            self.store_name(),
-        ))
+        let path = self.key_to_path(key);
+        if path.exists() {
+            std::fs::remove_dir_all(path)
+                .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
+        }
+        Ok(())
     }
 
     fn contains(&self, key: &Key) -> bool {
+        let path = self.key_to_path(key);
+        if path.exists() {
+            return true;
+        }
+        let metadata_path = self.key_to_path_metadata(key);
+        if metadata_path.exists() {
+            return true;
+        }
         false
     }
 
-    fn is_dir(&self, key: Key) -> bool {
+    fn is_dir(&self, key: &Key) -> bool {
+        let path = self.key_to_path(key);
+        if path.exists() {
+            return path.is_dir();
+        }
         false
     }
 
@@ -358,8 +391,21 @@ impl Store for FileStore {
         vec![]
     }
 
-    fn listdir(&self, key: &Key) -> Vec<String> {
-        vec![]
+    fn listdir(&self, key: &Key) -> Result<Vec<String>, StoreError> {
+        let path = self.key_to_path(key);
+        if path.exists() {
+            let dir =path.read_dir()
+            .map_err(|_| StoreError::KeyReadError(key.to_owned(), self.store_name()))?; 
+            let names = dir.flat_map(|entry| {
+                entry
+                    .ok()
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+            })
+            .filter(|name| !name.ends_with(Self::METADATA))
+            .collect();
+            return Ok(names);
+        }
+        Err(StoreError::KeyNotFound(key.to_owned()))
     }
 
     fn listdir_keys(&self, key: &Key) -> Vec<Key> {
