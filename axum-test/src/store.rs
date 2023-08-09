@@ -46,7 +46,7 @@ pub enum StoreError {
     KeyWriteError(Key, String),
 }
 
-trait Store {
+pub trait Store {
     /// Get store name
     fn store_name(&self) -> String {
         format!("{} Store", self.key_prefix())
@@ -358,9 +358,9 @@ impl Store for FileStore {
 
     fn set_metadata(&mut self, key: &Key, metadata: &Metadata) -> Result<(), StoreError> {
         let path = self.key_to_path_metadata(key);
-        let mut file = File::create(path)
+        let file = File::create(path)
             .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
-        let metadata = match metadata {
+        match metadata {
             Metadata::MetadataRecord(metadata) => serde_json::to_writer_pretty(file, metadata)
                 .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?,
             Metadata::LegacyMetadata(metadata) => serde_json::to_writer_pretty(file, metadata)

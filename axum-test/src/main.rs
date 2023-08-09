@@ -1,3 +1,5 @@
+use std::sync::{RwLock, Arc};
+
 use axum::{
     routing::get,
     Router,
@@ -11,7 +13,8 @@ extern crate serde_derive;
 pub mod metadata;
 pub mod store;
 
-use axum::extract::Path;
+use axum::extract::{Path, State};
+use store::{Store, FileStore, Key};
 
 #[derive(Serialize, Deserialize)]
 enum StatusCode {
@@ -35,13 +38,296 @@ async fn submit_query(Path(query): Path<String>) -> Json<SimpleStatus> {
     Json(SimpleStatus{status:StatusCode::Ok, message:format!("Hello, {}!", query)})
 }
 
+/// Get data from store. Equivalent to Store.get_bytes.
+/// Content type (MIME) is obtained from the metadata.
+async fn store_get<S:Store>(State(store):State<Arc<RwLock<S>>>, Path(query): Path<String>) -> impl axum::response::IntoResponse {
+    store.read().unwrap().get_bytes(&Key::new(query)).unwrap()
+}
+
+/* 
+@app.route("/api/store/data/<path:query>", methods=["GET"])
+def store_get(query):
+    """Get data from store. Equivalent to Store.get_bytes.
+    Content type (MIME) is obtained from the metadata.
+    """
+    store = get_store()
+    try:
+        metadata = store.get_metadata(query)
+        mimetype = metadata.get("mimetype", "application/octet-stream")
+        r = make_response(store.get_bytes(query))
+        r.headers.set("Content-Type", mimetype)
+        return r
+    except:
+        response = jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+        response.status = "404"
+        return response
+
+
+@app.route("/web/<path:query>", methods=["GET"])
+def web_store_get(query):
+    """Shortcut to the 'web' directory in the store.
+    Similar to /store/data/web, except the index.html is automatically added if query is a directory.
+    The 'web' directory hosts web applications and visualization tools, e.g. liquer-pcv or liquer-gui.
+    """
+    store = get_store()
+    try:
+        query = "web/" + query
+        if query.endswith("/"):
+            query += "index.html"
+        if store.is_dir(query):
+            query += "/index.html"
+        metadata = store.get_metadata(query)
+        mimetype = metadata.get("mimetype", "application/octet-stream")
+        r = make_response(store.get_bytes(query))
+        r.headers.set("Content-Type", mimetype)
+        return r
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/data/<path:query>", methods=["POST"])
+def store_set(query):
+    """Set data in store. Equivalent to Store.store.
+    Unlike store method, which stores both data and metadata in one call,
+    the api/store/data POST only stores the data. The metadata needs to be set in a separate POST of api/store/metadata
+    either before or after the api/store/data POST.
+    """
+    store = get_store()
+    try:
+        metadata = store.get_metadata(query)
+    except KeyNotFoundStoreException:
+        metadata = {}
+        traceback.print_exc()
+    try:
+        data = request.get_data()
+        store.store(query, data, metadata)
+        return jsonify(dict(query=query, message="Data stored", status="OK"))
+    except:
+        response = jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+        response.status = "404"
+        return response
+
+
+@app.route("/api/store/upload/<path:query>", methods=["GET", "POST"])
+def store_upload(query):
+    """Upload data to store - similar to /api/store/data, but using upload. Equivalent to Store.store.
+    Unlike store method, which stores both data and metadata in one call,
+    the api/store/data POST only stores the data. The metadata needs to be set in a separate POST of api/store/metadata
+    either before or after the api/store/data POST.
+    """
+    if request.method == "POST":
+        if "file" not in request.files:
+            response = jsonify(
+                dict(
+                    query=query,
+                    message="Request does not contain 'file'",
+                    status="ERROR",
+                )
+            )
+            response.status = "404"
+            return response
+        file = request.files["file"]
+        if file.filename == "":
+            response = jsonify(
+                dict(
+                    query=query,
+                    message="Request contains 'file' with an empty filename",
+                    status="ERROR",
+                )
+            )
+            response.status = "404"
+            return response
+
+        try:
+            data = file.read()
+        except:
+            response = jsonify(
+                dict(query=query, message=traceback.format_exc(), status="ERROR")
+            )
+            response.status = "404"
+            return response
+        store = get_store()
+        try:
+            metadata = store.get_metadata(query)
+        except KeyNotFoundStoreException:
+            metadata = {}
+            traceback.print_exc()
+        try:
+            store.store(query, data, metadata)
+            return jsonify(
+                dict(query=query, message="Data stored", size=len(data), status="OK")
+            )
+        except:
+            response = jsonify(
+                dict(query=query, message=traceback.format_exc(), status="ERROR")
+            )
+            response.status = "404"
+            return response
+
+    r = make_response(
+        f"""
+    <!doctype html>
+    <title>Upload File</title>
+    <h1>Upload to {query}</h1>
+    <form method="post" enctype="multipart/form-data">
+      <input type="file" name="file"/>
+      <input type="submit" value="Upload"/>
+    </form>
+    """
+    )
+
+    r.headers.set("Content-Type", "text/html")
+    return r
+
+
+@app.route("/api/store/metadata/<path:query>", methods=["GET"])
+def store_get_metadata(query):
+    store = get_store()
+    metadata = store.get_metadata(query)
+    return jsonify(metadata)
+
+
+@app.route("/api/store/metadata/<path:query>", methods=["POST"])
+def store_set_metadata(query):
+    store = get_store()
+    try:
+        metadata = request.get_json(force=True)
+        store.store_metadata(query, metadata)
+
+        return jsonify(dict(query=query, message="Metadata stored", status="OK"))
+    except:
+        response = jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+        response.status = "404"
+        return response
+
+
+@app.route("/api/stored_metadata/<path:query>", methods=["GET"])
+def get_stored_metadata(query):
+    """Get metadata stored in a store or cache"""
+    import liquer.tools
+
+    metadata = liquer.tools.get_stored_metadata(query)
+    return jsonify(metadata)
+
+
+@app.route("/api/store/remove/<path:query>")
+def store_remove(query):
+    store = get_store()
+    try:
+        store.remove(query)
+        return jsonify(dict(query=query, message=f"Removed {query}", status="OK"))
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/removedir/<path:query>")
+def store_removedir(query):
+    store = get_store()
+    try:
+        store.removedir(query)
+        return jsonify(
+            dict(query=query, message=f"Removed directory {query}", status="OK")
+        )
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/contains/<path:query>")
+def store_contains(query):
+    store = get_store()
+    try:
+        contains = store.contains(query)
+        return jsonify(
+            dict(
+                query=query, message=f"Contains {query}", contains=contains, status="OK"
+            )
+        )
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/is_dir/<path:query>")
+def store_is_dir(query):
+    store = get_store()
+    try:
+        is_dir = store.is_dir(query)
+        return jsonify(
+            dict(
+                query=query, message=f"Is directory {query}", is_dir=is_dir, status="OK"
+            )
+        )
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/keys")
+def store_keys():
+    store = get_store()
+    try:
+        keys = store.keys()
+        return jsonify(
+            dict(query=None, message=f"Keys obtained", keys=keys, status="OK")
+        )
+    except:
+        return jsonify(dict(query=None, message=traceback.format_exc(), status="ERROR"))
+
+
+@app.route("/api/store/listdir/<path:query>")
+def store_listdir(query):
+    store = get_store()
+    try:
+        listdir = store.listdir(query)
+        return jsonify(
+            dict(query=query, message=f"Keys obtained", listdir=listdir, status="OK")
+        )
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+
+
+@app.route("/api/store/makedir/<path:query>")
+def store_makedir(query):
+    store = get_store()
+    try:
+        store.makedir(query)
+        return jsonify(dict(query=query, message=f"Makedir succeeded", status="OK"))
+    except:
+        return jsonify(
+            dict(query=query, message=traceback.format_exc(), status="ERROR")
+        )
+*/
+
 #[tokio::main]
 async fn main() {
     // build our application with a single route
+
+    let shared_state = Arc::new(RwLock::new(FileStore::new(".","")));
+
     let app = Router::new()
     .route("/", get(|| async { "Hello, World!" }))
     .route("/liquer/q/*query", get(evaluate_query))
-    .route("/liquer/submit/*query", get(submit_query));
+    .route("/liquer/submit/*query", get(submit_query))
+    .route("/liquer/store/data/*query", get(store_get))
+    .with_state(shared_state)
+    ;
+
 
     // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
