@@ -90,6 +90,11 @@ pub trait Store {
         metadata
     }
 
+    /// Get data and metadata
+    fn get(&self, key: &Key) -> Result<(Vec<u8>, Metadata), StoreError> {
+        Err(StoreError::KeyNotFound(key.to_owned()))
+    }
+
     /// Get data as bytes
     fn get_bytes(&self, key: &Key) -> Result<Vec<u8>, StoreError> {
         Err(StoreError::KeyNotFound(key.to_owned()))
@@ -310,6 +315,11 @@ impl Store for FileStore {
         update: bool,
     ) -> Metadata {
         metadata
+    }
+    fn get(&self, key: &Key) -> Result<(Vec<u8>, Metadata), StoreError> {
+        let data = self.get_bytes(key)?;
+        let metadata = self.get_metadata(key)?;
+        Ok((data, metadata))
     }
 
     fn get_bytes(&self, key: &Key) -> Result<Vec<u8>, StoreError> {

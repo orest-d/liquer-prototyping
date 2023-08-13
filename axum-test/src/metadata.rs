@@ -1,4 +1,4 @@
-use serde_json;
+use serde_json::{self, Value};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {
@@ -37,6 +37,7 @@ pub struct MetadataRecord {
     pub type_identifier: String,
     pub message: String,
     pub is_error: bool,
+    pub mimetype: String,
 }
 
 impl MetadataRecord {
@@ -62,4 +63,22 @@ impl MetadataRecord {
 pub enum Metadata{
     LegacyMetadata(serde_json::Value),
     MetadataRecord(MetadataRecord),
+}
+
+impl Metadata{
+   pub fn new() -> Metadata{
+       Metadata::MetadataRecord(MetadataRecord::new())
+   }
+   pub fn get_mimetype(&self) -> String{
+       match self{
+           Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                if let Some(mimetype) = o.get("mimetype"){
+                     return mimetype.to_string();
+                }
+                return "application/octet-stream".to_string();
+           },
+           Metadata::MetadataRecord(m) => m.mimetype.to_string(),
+              _ => "application/octet-stream".to_string(),
+       }
+   } 
 }

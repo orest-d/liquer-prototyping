@@ -1,5 +1,6 @@
 use std::sync::{RwLock, Arc};
 
+use axum::http::header;
 use axum::{
     routing::get,
     Router,
@@ -41,53 +42,67 @@ async fn submit_query(Path(query): Path<String>) -> Json<SimpleStatus> {
 /// Get data from store. Equivalent to Store.get_bytes.
 /// Content type (MIME) is obtained from the metadata.
 async fn store_get<S:Store>(State(store):State<Arc<RwLock<S>>>, Path(query): Path<String>) -> impl axum::response::IntoResponse {
-    store.read().unwrap().get_bytes(&Key::new(query)).unwrap()
+    let st = store.read();
+    if let Ok(store) = st {
+        let data = store.get(&Key::new(query));
+        if let Ok((data, metadata)) = data {
+            return (axum::http::StatusCode::OK,
+                [(header::CONTENT_TYPE, metadata.get_mimetype())],
+                data);
+        }
+        else{
+            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain".to_owned())],
+                format!("Error reading store: {}", data.err().unwrap()).into());       
+        }
+    }
+    else {
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain".to_owned())],
+            format!("Error accessing store: {}", st.err().unwrap()).into());
+    }
 }
 
+/// Shortcut to the 'web' directory in the store.
+/// Similar to /store/data/web, except the index.html is automatically added if query is a directory.
+///The 'web' directory hosts web applications and visualization tools, e.g. liquer-pcv or liquer-gui.
+async fn web_store_get<S:Store>(State(store):State<Arc<RwLock<S>>>, Path(query): Path<String>) -> impl axum::response::IntoResponse {
+    let st = store.read();
+    
+    if let Ok(store) = st {
+        let query = if query.ends_with("/") {
+            format!("{}index.html",query)
+        }
+        else {
+            query
+        };
+        let key=Key::new(&query);
+        let key = if store.is_dir(&key) {
+            Key::new(format!("{}/index.html",&query))
+        }
+        else {
+            key
+        };
+
+        let data = store.get(&key);
+        if let Ok((data, metadata)) = data {
+            return (axum::http::StatusCode::OK,
+                [(header::CONTENT_TYPE, metadata.get_mimetype())],
+                data);
+        }
+        else{
+            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain".to_owned())],
+                format!("Error reading store: {}", data.err().unwrap()).into());       
+        }
+    }
+    else {
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain".to_owned())],
+            format!("Error accessing store: {}", st.err().unwrap()).into());
+    }
+}
 /* 
-@app.route("/api/store/data/<path:query>", methods=["GET"])
-def store_get(query):
-    """Get data from store. Equivalent to Store.get_bytes.
-    Content type (MIME) is obtained from the metadata.
-    """
-    store = get_store()
-    try:
-        metadata = store.get_metadata(query)
-        mimetype = metadata.get("mimetype", "application/octet-stream")
-        r = make_response(store.get_bytes(query))
-        r.headers.set("Content-Type", mimetype)
-        return r
-    except:
-        response = jsonify(
-            dict(query=query, message=traceback.format_exc(), status="ERROR")
-        )
-        response.status = "404"
-        return response
-
-
-@app.route("/web/<path:query>", methods=["GET"])
-def web_store_get(query):
-    """Shortcut to the 'web' directory in the store.
-    Similar to /store/data/web, except the index.html is automatically added if query is a directory.
-    The 'web' directory hosts web applications and visualization tools, e.g. liquer-pcv or liquer-gui.
-    """
-    store = get_store()
-    try:
-        query = "web/" + query
-        if query.endswith("/"):
-            query += "index.html"
-        if store.is_dir(query):
-            query += "/index.html"
-        metadata = store.get_metadata(query)
-        mimetype = metadata.get("mimetype", "application/octet-stream")
-        r = make_response(store.get_bytes(query))
-        r.headers.set("Content-Type", mimetype)
-        return r
-    except:
-        return jsonify(
-            dict(query=query, message=traceback.format_exc(), status="ERROR")
-        )
-
 
 @app.route("/api/store/data/<path:query>", methods=["POST"])
 def store_set(query):
@@ -325,6 +340,7 @@ async fn main() {
     .route("/liquer/q/*query", get(evaluate_query))
     .route("/liquer/submit/*query", get(submit_query))
     .route("/liquer/store/data/*query", get(store_get))
+    .route("/liquer/web/*query", get(web_store_get))
     .with_state(shared_state)
     ;
 
