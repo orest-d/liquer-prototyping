@@ -387,6 +387,20 @@ pub fn parse_key<S: AsRef<str>>(key: S) -> Result<Key, Error> {
     }
 }
 
+impl TryFrom<&str> for Key {
+    type Error = Error;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        parse_key(s)
+    }
+}
+
+impl TryFrom<String> for Key {
+    type Error = Error;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        parse_key(s)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

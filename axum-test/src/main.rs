@@ -14,7 +14,9 @@ pub mod query;
 pub mod store;
 
 use axum::extract::{Path, State};
-use store::{FileStore, Key, Store};
+use parse::parse_key;
+use query::Key;
+use store::{FileStore, Store};
 
 #[derive(Serialize, Deserialize, Debug)]
 enum StatusCode {
@@ -56,7 +58,8 @@ async fn store_get<S: Store>(
 ) -> impl axum::response::IntoResponse {
     let st = store.read();
     if let Ok(store) = st {
-        let data = store.get(&Key::new(query));
+        let key = parse_key(query).unwrap();
+        let data = store.get(&key);
         if let Ok((data, metadata)) = data {
             return (
                 axum::http::StatusCode::OK,
@@ -94,9 +97,9 @@ async fn web_store_get<S: Store>(
         } else {
             query
         };
-        let key = Key::new(&query);
+        let key = parse_key(query).unwrap();
         let key = if store.is_dir(&key) {
-            Key::new(format!("{}/index.html", &query))
+            key.join("index.html")
         } else {
             key
         };
@@ -135,19 +138,26 @@ async fn store_set<S: Store>(
     let st = store.read();
 
     if let Ok(store) = st {
-        let key = Key::new(&query);
-        let metadata = store.get_metadata(&key);
-
-        return (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, "text/plain".to_owned())],
-            format!("Store set not defined yet"),
-        );
+        match parse_key(&query) {
+            Ok(key) =>{
+                let metadata = store.get_metadata(&key);
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    [(header::CONTENT_TYPE, "text/plain".to_owned())],
+                    format!("Store set not defined yet"),
+                )
+            },
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain".to_owned())],
+                format!("Error: {}", e).into(),
+            ),
+        }
     } else {
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             [(header::CONTENT_TYPE, "text/plain".to_owned())],
-            format!("Store set not defined yet"),
+            format!("Error accessing store: {}", st.err().unwrap()),
         );
     }
 }
@@ -164,14 +174,26 @@ async fn store_upload<S: Store>(
     let st = store.read();
 
     if let Ok(store) = st {
-        let key = Key::new(&query);
-        let metadata = store.get_metadata(&key);
-
-        return (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            [(header::CONTENT_TYPE, "text/plain".to_owned())],
-            format!("Store upload not defined yet"),
-        );
+        match parse_key(&query) {
+            Ok(key) => (
+                
+                axum::http::StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/html".to_owned())],
+                format!("<!doctype html>
+                <title>Upload File</title>
+                <h1>Upload to {}</h1>
+                <form method=\"post\" enctype=\"multipart/form-data\">
+                <input type=\"file\" name=\"file\"/>
+                <input type=\"submit\" value=\"Upload\"/>
+                </form>", key
+            )
+            ),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain".to_owned())],
+                format!("Error: {}", e).into(),
+            ),
+        }
     } else {
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -186,19 +208,25 @@ async fn store_upload<S: Store>(
 async fn store_upload_get(
     Path(query): Path<String>,
 ) -> impl axum::response::IntoResponse {
-    let key = Key::new(&query);
-    (
-        axum::http::StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/html".to_owned())],
-        format!("<!doctype html>
-        <title>Upload File</title>
-        <h1>Upload to {}</h1>
-        <form method=\"post\" enctype=\"multipart/form-data\">
-        <input type=\"file\" name=\"file\"/>
-        <input type=\"submit\" value=\"Upload\"/>
-        </form>", key
-    )
-    )
+    match parse_key(&query) {
+        Ok(key) => (
+            axum::http::StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/html".to_owned())],
+            format!("<!doctype html>
+            <title>Upload File</title>
+            <h1>Upload to {}</h1>
+            <form method=\"post\" enctype=\"multipart/form-data\">
+            <input type=\"file\" name=\"file\"/>
+            <input type=\"submit\" value=\"Upload\"/>
+            </form>", key
+        )
+        ),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain".to_owned())],
+            format!("Error: {}", e).into(),
+        ),
+    } 
 }
 
 

@@ -494,6 +494,20 @@ impl IndexMut<usize> for Key {
     }
 }
 
+impl Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_empty() {
+            write!(f, "")?;
+        } else {
+            write!(f, "{}", self[0].encode())?;
+            for x in self.iter().skip(1) {
+                write!(f, "/{}", x.encode())?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Query segment representing a resource, i.e. path to a file in a store.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ResourceQuerySegment {

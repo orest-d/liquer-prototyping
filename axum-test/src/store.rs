@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::metadata::{self, Metadata, MetadataRecord};
+use crate::query::Key;
 
+/*
 #[derive(Debug, Clone)]
 pub struct Key(String);
 impl Key {
@@ -33,6 +35,7 @@ impl TryFrom<String> for Key {
         Ok(Key(s))
     }
 }
+*/
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -59,7 +62,7 @@ pub trait Store {
     }
 
     fn root_key(&self) -> Key {
-        Key::new(self.key_prefix())
+        self.key_prefix().try_into().unwrap()
     }
 
     /// Create default metadata object for a given key
@@ -457,13 +460,15 @@ impl Store for FileStore {
 // Unittests
 #[cfg(test)]
 mod tests {
+    use crate::query::Key;
+
     use super::*;
     use std::convert::TryFrom;
 
     #[test]
     fn test_key() {
-        let k = Key::new("test");
-        assert_eq!(k.0, "test");
+        let k:Key = "test".try_into().unwrap();
+        assert_eq!(k.encode(), "test");
         assert_eq!(k.has_prefix("t"), true);
         assert_eq!(k.has_prefix("x"), false);
         assert_eq!(k.has_prefix("test"), true);
