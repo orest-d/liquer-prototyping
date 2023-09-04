@@ -9,5 +9,5 @@ name = "liquers_py"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.19.0"
+pyo3 = { git = "https://github.com/pyo3/pyo3", features = ["extension-module"] }
 liquers-core={path="../liquers-core"}

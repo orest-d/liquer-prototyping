@@ -760,7 +760,7 @@ impl Query {
     }
 
     /// Make a shortened version of the at most n characters of a query for printout purposes
-    pub fn short(self, n: usize) -> String {
+    pub fn short(&self, n: usize) -> String {
         if let (_, Some(r)) = self.predecessor() {
             r.encode()
         } else {
