@@ -4,7 +4,7 @@ extern crate nom_locate;
 use nom::branch::alt;
 use nom::character::complete::digit1;
 use nom::combinator::opt;
-use nom::sequence::{terminated, preceded};
+use nom::sequence::{preceded, terminated};
 use nom_locate::LocatedSpan;
 
 use nom::bytes::complete::{tag, take_while, take_while1};
@@ -257,20 +257,51 @@ fn resource_qs(text: Span) -> IResult<Span, QuerySegment> {
     let (text, rqs) = resource_segment_with_header(text)?;
     Ok((text, QuerySegment::Resource(rqs)))
 }
+enum FilenameOrAction {
+    Filename(ResourceName),
+    Action(ActionRequest),
+}
+fn filename_or_action1(text: Span) -> IResult<Span, FilenameOrAction> {
+    let position: Position = text.into();
+    let (text, fname) = filename(text)?;
+    Ok((
+        text,
+        FilenameOrAction::Filename(ResourceName::new(fname).with_position(position)),
+    ))
+}
+fn filename_or_action2(text: Span) -> IResult<Span, FilenameOrAction> {
+    let (text, action) = action_request(text)?;
+    Ok((text, FilenameOrAction::Action(action)))
+}
+fn filename_or_action(text: Span) -> IResult<Span, FilenameOrAction> {
+    alt((filename_or_action1, filename_or_action2))(text)
+}
 
 fn transform_segment_with_header(text: Span) -> IResult<Span, TransformQuerySegment> {
     let (text, header) = transform_segment_header(text)?;
-    let (text, query) = separated_list1(tag("/"), action_request)(text)?;
-    let position: Position = text.into();
-    let (text, fname) = opt(slash_filename)(text)?;
-    Ok((
-        text,
-        TransformQuerySegment {
-            header: Some(header),
-            query,
-            filename: fname.map(|name| ResourceName::new(name).with_position(position)),
-        },
-    ))
+    let (text, mut query) = many0(terminated(action_request, tag("/")))(text)?;
+    let (text, fna) = filename_or_action(text)?;
+    match fna {
+        FilenameOrAction::Filename(fname) => Ok((
+            text,
+            TransformQuerySegment {
+                header: Some(header),
+                query,
+                filename: Some(fname),
+            },
+        )),
+        FilenameOrAction::Action(action) => {
+            query.push(action);
+            Ok((
+                text,
+                TransformQuerySegment {
+                    header: Some(header),
+                    query: query,
+                    filename: None,
+                },
+            ))
+        }
+    }
 }
 fn transform_qs(text: Span) -> IResult<Span, QuerySegment> {
     let (text, tqs) = transform_segment_with_header(text)?;
@@ -300,19 +331,32 @@ fn action_requests(text: Span) -> IResult<Span, Vec<ActionRequest>> {
 }
 
 fn transform_segment_without_header(text: Span) -> IResult<Span, TransformQuerySegment> {
-    let (text, query) = action_requests(text)?;
-    let position: Position = text.into();
-    let (text, fname) = filename(text)?;
-    Ok((
-        text,
-        TransformQuerySegment {
-            header: None,
-            query,
-            filename: Some(ResourceName::new(fname).with_position(position)),
-        },
-    ))
-}
+    let (text, mut query) = action_requests(text)?;
+    let (text, fna) = filename_or_action(text)?;
 
+    match fna {
+        FilenameOrAction::Filename(fname) => Ok((
+            text,
+            TransformQuerySegment {
+                header: None,
+                query,
+                filename: Some(fname),
+            },
+        )),
+        FilenameOrAction::Action(action) => {
+            query.push(action);
+            Ok((
+                text,
+                TransformQuerySegment {
+                    header: None,
+                    query: query,
+                    filename: None,
+                },
+            ))
+        }
+    }
+}
+/*
 fn transform_segment_without_header_and_filename(
     text: Span,
 ) -> IResult<Span, TransformQuerySegment> {
@@ -328,12 +372,13 @@ fn transform_segment_without_header_and_filename(
         },
     ))
 }
+*/
 
 fn simple_transform_query(text: Span) -> IResult<Span, Query> {
     let (text, abs) = opt(tag("/"))(text)?;
     let (text, tqs) = alt((
         transform_segment_without_header,
-        transform_segment_without_header_and_filename,
+        //transform_segment_without_header_and_filename,
     ))(text)?;
     Ok((
         text,
@@ -587,7 +632,10 @@ mod tests {
         let q = parse_query("-R/-/dr")?;
         assert_eq!(q.segments.len(), 2);
         assert_eq!(q.encode(), "-R/-/dr");
-        assert_eq!(q.segments[0].resource().unwrap().header.unwrap().encode(), "-R");
+        assert_eq!(
+            q.segments[0].resource().unwrap().header.unwrap().encode(),
+            "-R"
+        );
         Ok(())
     }
     #[test]
@@ -595,8 +643,51 @@ mod tests {
         let q = parse_query("-R-meta/-/dr")?;
         assert_eq!(q.segments.len(), 2);
         assert_eq!(q.encode(), "-R-meta/-/dr");
-        assert_eq!(q.segments[0].resource().unwrap().header.unwrap().encode(), "-R-meta");
+        assert_eq!(
+            q.segments[0].resource().unwrap().header.unwrap().encode(),
+            "-R-meta"
+        );
         Ok(())
     }
-
+    #[test]
+    fn query1() -> Result<(), Error> {
+        let q = parse_query("-R/abc/def/-/ghi/jkl/file.txt")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.filename(), Some(ResourceName::new("file.txt".to_owned())));
+        assert_eq!(q.extension(), Some("txt".to_string()));
+        assert_eq!(q.encode(), "-R/abc/def/-/ghi/jkl/file.txt");
+        Ok(())
+    }
+    #[test]
+    fn query2() -> Result<(), Error> {
+        let q = parse_query("abc/def/-/xxx")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.filename(), None);
+        assert_eq!(q.extension(), None);
+        assert_eq!(q.encode(), "-R/abc/def/-/xxx");
+        let q = parse_query("xxx/-q/qqq")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.filename(), None);
+        assert_eq!(q.extension(), None);
+        assert_eq!(q.encode(), "-R/xxx/-q/qqq");
+        Ok(())
+    }
+    #[test]
+    fn query3a() -> Result<(), Error> {
+        let q = parse_query("-R/abc/def/-q/xxx/-q/qqq")?;
+        assert_eq!(q.segments.len(), 3);
+        assert_eq!(q.filename(), None);
+        assert_eq!(q.extension(), None);
+        assert_eq!(q.encode(), "-R/abc/def/-q/xxx/-q/qqq");
+        Ok(())
+    }
+    #[test]
+    fn query3b() -> Result<(), Error> {
+        let q = parse_query("abc/def/-/xxx/-q/qqq")?;
+        assert_eq!(q.segments.len(), 3);
+        assert_eq!(q.filename(), None);
+        assert_eq!(q.extension(), None);
+        assert_eq!(q.encode(), "abc/def/-/xxx/-q/qqq");
+        Ok(())
+    }
 }

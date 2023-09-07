@@ -368,17 +368,23 @@ impl QuerySegment{
     }
 
     fn is_resource_query_segment(&self) -> bool {
-        match &self.0 {
-            liquers_core::query::QuerySegment::Resource(_) => true,
-            _ => false
-        }
+        self.0.is_resource_query_segment()
     }
 
     fn is_transform_query_segment(&self) -> bool {
-        match &self.0 {
-            liquers_core::query::QuerySegment::Transform(_) => true,
-            _ => false
-        }
+        self.0.is_transform_query_segment()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn is_filename(&self) -> bool {
+        self.0.is_filename()
+    }
+
+    fn is_action_request(&self) -> bool {
+        self.0.is_action_request()
     }
 
     fn encode(&self) -> String {

@@ -571,8 +571,16 @@ impl ResourceQuerySegment {
         self.key.filename().cloned()
     }
 
+    pub fn is_filename(&self) -> bool {
+        self.key.len() == 1
+    }
+        
     fn len(&self) -> usize {
         self.key.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.key.is_empty()
     }
 }
 
@@ -616,6 +624,13 @@ impl QuerySegment {
             QuerySegment::Transform(tqs) => tqs.len(),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.is_empty(),
+            QuerySegment::Transform(tqs) => tqs.is_empty(),
+        }
+    }
     pub fn is_ns(&self) -> bool {
         match self {
             QuerySegment::Resource(_) => false,
@@ -634,13 +649,19 @@ impl QuerySegment {
             QuerySegment::Transform(tqs) => tqs.last_ns(),
         }
     }
-    pub fn is_resource(&self) -> bool {
+    pub fn is_filename(&self) -> bool {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.is_filename(),
+            QuerySegment::Transform(tqs) => tqs.is_filename(),
+        }
+    }
+    pub fn is_resource_query_segment(&self) -> bool {
         match self {
             QuerySegment::Resource(_) => true,
             QuerySegment::Transform(_) => false,
         }
     }
-    pub fn is_transform(&self) -> bool {
+    pub fn is_transform_query_segment(&self) -> bool {
         match self {
             QuerySegment::Resource(_) => false,
             QuerySegment::Transform(_) => true,
@@ -650,6 +671,18 @@ impl QuerySegment {
         match self {
             QuerySegment::Resource(rqs) => Some(rqs.to_owned()),
             QuerySegment::Transform(_) => None,
+        }
+    }
+    pub fn is_action_request(&self) -> bool {
+        match self {
+            QuerySegment::Resource(_) => false,
+            QuerySegment::Transform(tqs) => tqs.is_action_request(),
+        }
+    }
+    pub fn action(&self) -> Option<ActionRequest> {
+        match self {
+            QuerySegment::Resource(_) => None,
+            QuerySegment::Transform(tqs) => tqs.action(),
         }
     }
 }
