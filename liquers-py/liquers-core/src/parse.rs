@@ -4,6 +4,7 @@ extern crate nom_locate;
 use nom::branch::alt;
 use nom::character::complete::digit1;
 use nom::combinator::opt;
+use nom::sequence::{terminated, preceded};
 use nom_locate::LocatedSpan;
 
 use nom::bytes::complete::{tag, take_while, take_while1};
@@ -13,8 +14,8 @@ use nom::*;
 
 use crate::error::Error;
 use crate::query::{
-    ActionParameter, ActionRequest, HeaderParameter, Position, Query, QuerySegment, ResourceName,
-    ResourceQuerySegment, SegmentHeader, TransformQuerySegment, Key,
+    ActionParameter, ActionRequest, HeaderParameter, Key, Position, Query, QuerySegment,
+    ResourceName, ResourceQuerySegment, SegmentHeader, TransformQuerySegment,
 };
 
 type Span<'a> = LocatedSpan<&'a str>;
@@ -38,12 +39,18 @@ fn identifier(text: Span) -> IResult<Span, String> {
 }
 
 fn filename(text: Span) -> IResult<Span, String> {
-    let (text, a) = take_while(|c| is_alphabetic(c as u8) || c == '_')(text)?;
+    let (text, a) = take_while(|c| is_alphanumeric(c as u8) || c == '_')(text)?;
     let (text, _dot) = nom::character::complete::char('.')(text)?;
     let (text, b) =
         take_while1(|c| is_alphanumeric(c as u8) || c == '_' || c == '.' || c == '-')(text)?;
 
     Ok((text, format!("{}.{}", a, b)))
+}
+
+fn slash_filename(text: Span) -> IResult<Span, String> {
+    let (text, _) = tag("/")(text)?;
+    let (text, fname) = filename(text)?;
+    Ok((text, fname))
 }
 
 fn resource_name(text: Span) -> IResult<Span, ResourceName> {
@@ -210,7 +217,6 @@ fn resource_segment_header(text: Span) -> IResult<Span, SegmentHeader> {
     let (text, _) = tag("R")(text)?;
     let (text, name) = take_while(|c: char| is_alphanumeric(c as u8) || c == '_')(text)?;
     let (text, parameters) = many0(header_parameter)(text)?;
-    let (text, _) = tag("/")(text)?;
 
     Ok((
         text,
@@ -233,12 +239,17 @@ pub(crate) fn resource_path1(text: Span) -> IResult<Span, Vec<ResourceName>> {
 
 fn resource_segment_with_header(text: Span) -> IResult<Span, ResourceQuerySegment> {
     let (text, header) = resource_segment_header(text)?;
-    let (text, key) = resource_path1(text)?;
+    let (text, path) = opt(preceded(tag("/"), resource_path1))(text)?;
+    let key = if let Some(path) = path {
+        Key(path)
+    } else {
+        Key(vec![])
+    };
     Ok((
         text,
         ResourceQuerySegment {
             header: Some(header),
-            key: Key(key),
+            key: key,
         },
     ))
 }
@@ -251,7 +262,7 @@ fn transform_segment_with_header(text: Span) -> IResult<Span, TransformQuerySegm
     let (text, header) = transform_segment_header(text)?;
     let (text, query) = separated_list1(tag("/"), action_request)(text)?;
     let position: Position = text.into();
-    let (text, fname) = opt(filename)(text)?;
+    let (text, fname) = opt(slash_filename)(text)?;
     Ok((
         text,
         TransformQuerySegment {
@@ -268,11 +279,11 @@ fn transform_qs(text: Span) -> IResult<Span, QuerySegment> {
 fn query_segment(text: Span) -> IResult<Span, QuerySegment> {
     alt((resource_qs, transform_qs))(text)
 }
-
-fn transform_segment_without_header(text: Span) -> IResult<Span, TransformQuerySegment> {
+/*
+fn _transform_segment_without_header(text: Span) -> IResult<Span, TransformQuerySegment> {
     let (text, query) = separated_list1(tag("/"), action_request)(text)?;
     let position: Position = text.into();
-    let (text, fname) = opt(filename)(text)?;
+    let (text, fname) = opt(slash_filename)(text)?;
     Ok((
         text,
         TransformQuerySegment {
@@ -282,10 +293,48 @@ fn transform_segment_without_header(text: Span) -> IResult<Span, TransformQueryS
         },
     ))
 }
+*/
+
+fn action_requests(text: Span) -> IResult<Span, Vec<ActionRequest>> {
+    many0(terminated(action_request, tag("/")))(text)
+}
+
+fn transform_segment_without_header(text: Span) -> IResult<Span, TransformQuerySegment> {
+    let (text, query) = action_requests(text)?;
+    let position: Position = text.into();
+    let (text, fname) = filename(text)?;
+    Ok((
+        text,
+        TransformQuerySegment {
+            header: None,
+            query,
+            filename: Some(ResourceName::new(fname).with_position(position)),
+        },
+    ))
+}
+
+fn transform_segment_without_header_and_filename(
+    text: Span,
+) -> IResult<Span, TransformQuerySegment> {
+    let (text, mut query) = action_requests(text)?;
+    let (text, last) = action_request(text)?;
+    query.push(last);
+    Ok((
+        text,
+        TransformQuerySegment {
+            header: None,
+            query,
+            filename: None,
+        },
+    ))
+}
 
 fn simple_transform_query(text: Span) -> IResult<Span, Query> {
     let (text, abs) = opt(tag("/"))(text)?;
-    let (text, tqs) = transform_segment_without_header(text)?;
+    let (text, tqs) = alt((
+        transform_segment_without_header,
+        transform_segment_without_header_and_filename,
+    ))(text)?;
     Ok((
         text,
         Query {
@@ -401,7 +450,6 @@ impl TryFrom<String> for Key {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,6 +466,16 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn parse_filename_test() -> Result<(), Box<dyn std::error::Error>> {
+        let (_remainder, fname) = filename(Span::new("file1.txt"))?;
+        assert_eq!(fname, "file1.txt");
+        let (_remainder, fname) = slash_filename(Span::new("/file2.txt"))?;
+        assert_eq!(fname, "file2.txt");
+        Ok(())
+    }
+
     #[test]
     fn parse_path_test() -> Result<(), Box<dyn std::error::Error>> {
         let (remainder, path) = query_parser(Span::new("abc-def/xxx-123"))?;
@@ -427,6 +485,29 @@ mod tests {
         assert_eq!(remainder.to_string().len(), 0);
         Ok(())
     }
+
+    #[test]
+    fn transform_segment_without_header_test() -> Result<(), Box<dyn std::error::Error>> {
+        let (remainder, tqs) = transform_segment_without_header(Span::new("abc/def/file.txt"))?;
+        println!("REMAINDER: {:#?}", remainder);
+        println!("TQS:      {:#?}", tqs);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_query_filename() -> Result<(), Box<dyn std::error::Error>> {
+        let q = parse_query("abc/def/file.txt")?;
+        assert_eq!(q.filename().unwrap().encode(), "file.txt");
+        Ok(())
+    }
+
+    #[test]
+    fn parse_query_filename0() -> Result<(), Box<dyn std::error::Error>> {
+        let q = parse_query("file.txt")?;
+        assert_eq!(q.filename().unwrap().encode(), "file.txt");
+        Ok(())
+    }
+
     #[test]
     fn parse_query_test() -> Result<(), Error> {
         let path = parse_query("")?;
@@ -483,4 +564,39 @@ mod tests {
         assert!(path.last_ns().is_none());
         Ok(())
     }
+
+    #[test]
+    fn root1a() -> Result<(), Error> {
+        let q = parse_query("-R/a")?;
+        assert_eq!(q.segments.len(), 1);
+        assert_eq!(q.encode(), "-R/a");
+        let q = parse_query("-R/a/-/dr")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.encode(), "-R/a/-/dr");
+        Ok(())
+    }
+    #[test]
+    fn root1b() -> Result<(), Error> {
+        let q = parse_query("-R")?;
+        assert_eq!(q.segments.len(), 1);
+        assert_eq!(q.encode(), "-R");
+        Ok(())
+    }
+    #[test]
+    fn root2() -> Result<(), Error> {
+        let q = parse_query("-R/-/dr")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.encode(), "-R/-/dr");
+        assert_eq!(q.segments[0].resource().unwrap().header.unwrap().encode(), "-R");
+        Ok(())
+    }
+    #[test]
+    fn root3() -> Result<(), Error> {
+        let q = parse_query("-R-meta/-/dr")?;
+        assert_eq!(q.segments.len(), 2);
+        assert_eq!(q.encode(), "-R-meta/-/dr");
+        assert_eq!(q.segments[0].resource().unwrap().header.unwrap().encode(), "-R-meta");
+        Ok(())
+    }
+
 }

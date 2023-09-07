@@ -135,14 +135,12 @@ impl PartialEq for ResourceName {
         self.name == other.name
     }
 }
-impl Eq for ResourceName {
-    
-}
+impl Eq for ResourceName {}
 impl Hash for ResourceName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
-}   
+}
 
 impl Display for ResourceName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -536,7 +534,7 @@ impl ResourceQuerySegment {
     pub fn path(&self) -> String {
         self.key.iter().map(|x| x.encode()).join("/")
     }
-    
+
     pub fn encode(&self) -> String {
         let mut rqs = self.header.as_ref().map_or("".to_owned(), |x| x.encode());
         if !rqs.is_empty() {
@@ -547,6 +545,25 @@ impl ResourceQuerySegment {
         } else {
             let key = self.path();
             format!("{rqs}{key}")
+        }
+    }
+
+    pub fn encode_with_header(&self) -> String {
+        match &self.header {
+            None => {
+                if self.key.is_empty() {
+                    "-R".to_owned()
+                } else {
+                    format!("-R/{}", self.key.encode())
+                }
+            }
+            Some(header) => {
+                if self.key.is_empty() {
+                    header.encode()
+                } else {
+                    format!("{}/{}", header.encode(), self.key.encode())
+                }
+            }
         }
     }
 
@@ -578,6 +595,21 @@ impl QuerySegment {
             QuerySegment::Transform(tqs) => tqs.encode(),
         }
     }
+
+    pub fn encode_with_header(&self) -> String {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.encode_with_header(),
+            QuerySegment::Transform(tqs) => tqs.encode(),
+        }
+    }
+
+    pub fn filename(&self) -> Option<ResourceName> {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.filename().clone(),
+            QuerySegment::Transform(tqs) => tqs.filename.clone(),
+        }
+    }
+
     pub fn len(&self) -> usize {
         match self {
             QuerySegment::Resource(rqs) => rqs.len(),
@@ -601,6 +633,30 @@ impl QuerySegment {
             QuerySegment::Resource(_) => None,
             QuerySegment::Transform(tqs) => tqs.last_ns(),
         }
+    }
+    pub fn is_resource(&self) -> bool {
+        match self {
+            QuerySegment::Resource(_) => true,
+            QuerySegment::Transform(_) => false,
+        }
+    }
+    pub fn is_transform(&self) -> bool {
+        match self {
+            QuerySegment::Resource(_) => false,
+            QuerySegment::Transform(_) => true,
+        }
+    }
+    pub fn resource(&self) -> Option<ResourceQuerySegment> {
+        match self {
+            QuerySegment::Resource(rqs) => Some(rqs.to_owned()),
+            QuerySegment::Transform(_) => None,
+        }
+    }
+}
+
+impl Default for QuerySegment {
+    fn default() -> Self {
+        QuerySegment::Resource(ResourceQuerySegment::default())
     }
 }
 
@@ -774,19 +830,22 @@ impl Query {
     }
 
     pub fn encode(&self) -> String {
-        let q = self.segments.iter().map(|x| x.encode()).join("/");
-        if self.is_resource_query() {
-            if !q.starts_with('-') {
-                format!("-R/{q}")
-            } else {
-                q
-            }
-        } else {
+        if self.segments.is_empty() {
             if self.absolute {
-                format!("/{q}")
+                return "/".to_owned();
             } else {
-                q
+                return "".to_owned();
             }
+        }
+        let q = self
+            .segments
+            .iter()
+            .map(|x| x.encode_with_header())
+            .join("/");
+        if self.absolute {
+            format!("/{q}")
+        } else {
+            q
         }
     }
     pub fn len(&self) -> usize {

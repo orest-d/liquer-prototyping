@@ -1,6 +1,6 @@
 use pyo3::{prelude::*};
 
-use liquers_core::{parse::parse_key, query::{HeaderParameter, QuerySegment}};
+use liquers_core::{parse::parse_key};
 
 #[pyclass]
 struct Position(liquers_core::query::Position);
@@ -61,7 +61,7 @@ impl ActionParameter {
     }
 
     fn __repr__(&self) -> String {
-        format!("ActionParameter({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -89,7 +89,7 @@ impl ResourceName {
     }
 
     fn __repr__(&self) -> String {
-        format!("ResourceName({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -102,6 +102,16 @@ struct ActionRequest(liquers_core::query::ActionRequest);
 
 #[pymethods]
 impl ActionRequest {
+    #[new]
+    fn new(name:&str) -> Self {
+        ActionRequest(liquers_core::query::ActionRequest::new(name.to_owned()))
+    }
+
+    #[staticmethod]
+    fn from_arguments(name:&str) -> Self {
+        ActionRequest(liquers_core::query::ActionRequest::new(name.to_owned()))
+    }
+    
     #[getter]
     fn name(&self) -> String {
         self.0.name.to_string()
@@ -123,7 +133,7 @@ impl ActionRequest {
     }
 
     fn __repr__(&self) -> String {
-        format!("ActionRequest({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -175,7 +185,7 @@ impl SegmentHeader {
     }
 
     fn __repr__(&self) -> String {
-        format!("SegmentHeader({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -237,7 +247,7 @@ impl TransformQuerySegment {
     }
 
     fn __repr__(&self) -> String {
-        format!("TransformQuerySegment({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -268,7 +278,7 @@ impl Key {
     }
 
     fn __repr__(&self) -> String {
-        format!("Key({:?})", self.0)
+        format!("{:?}", self.0)
     }
 
     fn __str__(&self) -> String {
@@ -326,7 +336,57 @@ impl ResourceQuerySegment {
     }
 
     fn __repr__(&self) -> String {
-        format!("ResourceQuerySegment({:?})", self.0)
+        format!("{:?}", self.0)
+    }
+ 
+    fn __str__(&self) -> String {
+        self.0.encode()
+    }
+}
+
+#[pyclass]
+struct QuerySegment(liquers_core::query::QuerySegment);
+
+#[pymethods]
+impl QuerySegment{
+    #[new]
+    fn new() -> Self {
+        QuerySegment(liquers_core::query::QuerySegment::default())
+    }
+
+    #[getter]
+    fn filename(&self) -> Option<String> {
+        self.0.filename().map(|s| s.to_string())
+    }
+
+    #[getter]
+    fn header(&self) -> Option<SegmentHeader> {
+        match &self.0 {
+            liquers_core::query::QuerySegment::Transform(t) => t.header.as_ref().map(|h| SegmentHeader(h.clone())),
+            liquers_core::query::QuerySegment::Resource(r) => r.header.as_ref().map(|h| SegmentHeader(h.clone())),
+        }
+    }
+
+    fn is_resource_query_segment(&self) -> bool {
+        match &self.0 {
+            liquers_core::query::QuerySegment::Resource(_) => true,
+            _ => false
+        }
+    }
+
+    fn is_transform_query_segment(&self) -> bool {
+        match &self.0 {
+            liquers_core::query::QuerySegment::Transform(_) => true,
+            _ => false
+        }
+    }
+
+    fn encode(&self) -> String {
+        self.0.encode()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
@@ -349,12 +409,10 @@ impl Query {
         self.0.absolute
     }
 
-    /* 
     #[getter]
-    fn segments(&self) -> Vec<TransformQuerySegment> {
+    fn segments(&self) -> Vec<QuerySegment> {
         self.0.segments.iter().map(|s| QuerySegment(s.clone())).collect()
     }
-*/
 
     fn filename(&self) -> Option<String> {
         self.0.filename().map(|s| s.to_string())
@@ -401,12 +459,10 @@ impl Query {
         }
     }
 
-    /* 
     fn predecessor(&self) -> (Option<Query>, Option<QuerySegment>) {
         let (p,r) = self.0.predecessor();
         (p.map(|s| Query(s)), r.map(|s| QuerySegment(s)))
     }
-    */
 
     //#[args(n = 30)]
     fn short(&self, n:usize) -> String {
@@ -419,7 +475,7 @@ impl Query {
     }
 
     fn __repr__(&self) -> String {
-        format!("Query({:?})", self.0)
+        format!("{:?}", self.0)
     }
  
     fn __str__(&self) -> String {
