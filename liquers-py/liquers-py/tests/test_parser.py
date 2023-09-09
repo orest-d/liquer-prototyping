@@ -234,6 +234,15 @@ class TestParser:
         q = parse("/-R/.././a/b/c")
         assert q.to_absolute("x/y").encode() == "/-R/x/a/b/c"
 
+    def test_to_absolute_key(self):
+        cwd_key = parse_key("a/b/c")
+        assert parse_key("./x").to_absolute(cwd_key).encode() == "a/b/c/x"
+        assert parse_key("../x").to_absolute(cwd_key).encode() == "a/b/x"
+        assert parse_key("../../x").to_absolute(cwd_key).encode() == "a/x"
+        assert parse_key("../../../x").to_absolute(cwd_key).encode() == "x"
+        assert parse_key("../../../../x").to_absolute(cwd_key).encode() == "x"
+        assert parse_key("A/B/./x").to_absolute(cwd_key).encode() == "A/B/x"
+        assert parse_key("A/B/../x").to_absolute(cwd_key).encode() == "A/x"
 
 class TestQueryElements:
     def test_simple_action_request(self):

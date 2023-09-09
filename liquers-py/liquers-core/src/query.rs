@@ -120,6 +120,22 @@ impl ResourceName {
             ..self
         }
     }
+
+    /// Clear the position of the resource name
+    pub fn clean_position(&mut self){
+        self.position = Position::unknown();
+    }
+
+    /// Is a resource representing the current working directory (i.e. ".")
+    pub fn is_cwd(&self) -> bool {
+        self.name == "."
+    }
+
+    /// Is a resource representing the parent directory (i.e. "..")
+    pub fn is_parent(&self) -> bool {
+        self.name == ".."
+    }
+    
     /// Encode resource name as a string
     pub fn encode(&self) -> &str {
         &self.name
@@ -439,6 +455,13 @@ impl Key {
         Self(vec![])
     }
 
+    /// Clean the position of all the elements of the key
+    fn clean_position(&mut self) {
+        for x in self.0.iter_mut() {
+            x.clean_position();
+        }
+    }
+
     /// Check if the key is empty
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -475,6 +498,47 @@ impl Key {
         let mut key = self.clone();
         key.0.push(ResourceName::new(name.as_ref().to_owned()));
         key
+    }
+
+    /// Return a parent key - i.e. a key without the last element.
+    pub fn parent(&self) -> Self {
+        let mut key = Vec::new();
+        for x in self.iter().take(self.len() - 1) {
+            key.push(x.clone());
+        }
+        Key(key)
+    }   
+
+    /// Convert a key to an absolute key - i.e. interpret "." and ".." elements.
+    /// The cwd_key is a "current working directory" key - i.e. a key to which "." and ".." elements are relative to.
+    /// Note that the cwd_key should be absolute, i.e. it should not contain any "." or ".." elements.
+    /// This is not checked by the function.
+    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+        let mut result = Vec::new();
+        let mut use_cwd = true;
+        for x in self.iter() {
+            if !result.is_empty() {
+                use_cwd = false;
+            }
+            if x.is_cwd() {                
+                if use_cwd{
+                    for y in cwd_key.iter() {
+                        result.push(y.clone());
+                    }
+                }
+            } else if x.is_parent() {
+                if use_cwd {
+                    for y in cwd_key.parent().iter() {
+                        result.push(y.clone());
+                    }
+                } else {
+                    result.pop();
+                }
+            } else {
+                result.push(x.clone());
+            }
+        }
+        Key(result)
     }
 }
 
@@ -943,6 +1007,8 @@ impl Query {
 
 #[cfg(test)]
 mod tests {
+    use crate::parse::parse_key;
+
     use super::*;
 
     #[test]
@@ -1024,5 +1090,17 @@ mod tests {
 
         let q = a + f;
         assert_eq!(q.encode(), "action/file.txt");
+    }
+
+    #[test]
+    fn to_absolute1() {
+        let cwd_key = parse_key("a/b/c").unwrap();
+        assert_eq!(parse_key("./x").unwrap().to_absolute(&cwd_key).encode(), "a/b/c/x");
+        assert_eq!(parse_key("../x").unwrap().to_absolute(&cwd_key).encode(), "a/b/x");
+        assert_eq!(parse_key("../../x").unwrap().to_absolute(&cwd_key).encode(), "a/x");
+        assert_eq!(parse_key("../../../x").unwrap().to_absolute(&cwd_key).encode(), "x");
+        assert_eq!(parse_key("../../../../x").unwrap().to_absolute(&cwd_key).encode(), "x");
+        assert_eq!(parse_key("A/B/./x").unwrap().to_absolute(&cwd_key).encode(), "A/B/x");
+        assert_eq!(parse_key("A/B/../x").unwrap().to_absolute(&cwd_key).encode(), "A/x");
     }
 }

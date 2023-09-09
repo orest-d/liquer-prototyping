@@ -1,6 +1,5 @@
 use pyo3::prelude::*;
 
-use liquers_core::parse::parse_key;
 
 #[pyclass]
 struct Position(liquers_core::query::Position);
@@ -279,12 +278,20 @@ struct Key(liquers_core::query::Key);
 impl Key {
     #[new]
     fn new(key: &str) -> Self {
-        Key(parse_key(key).unwrap())
+        Key(liquers_core::parse::parse_key(key).unwrap())
     }
 
     fn encode(&self) -> String {
         self.0.encode()
     }
+
+    fn to_absolute(&self, cwd_key:&Key) -> Key {
+        Key(self.0.to_absolute(&cwd_key.0))
+    }
+
+    fn parent(&self) -> Key {
+        Key(self.0.parent())
+    }   
 
     fn __len__(&self) -> usize {
         self.0.len()
@@ -529,6 +536,16 @@ fn parse(query: &str) -> PyResult<Query> {
     }
 }
 
+#[pyfunction]
+fn parse_key(key: &str) -> PyResult<Key> {
+    match liquers_core::parse::parse_key(key) {
+        Ok(k) => Ok(Key(k)),
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+            e.to_string(),
+        )),
+    }
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn liquers_py(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -542,5 +559,6 @@ fn liquers_py(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<ResourceQuerySegment>()?;
     m.add_class::<Query>()?;
     m.add_function(wrap_pyfunction!(parse, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_key, m)?)?;
     Ok(())
 }
