@@ -667,10 +667,24 @@ impl QuerySegment {
             QuerySegment::Transform(_) => true,
         }
     }
+    /* 
     pub fn resource(&self) -> Option<ResourceQuerySegment> {
         match self {
             QuerySegment::Resource(rqs) => Some(rqs.to_owned()),
             QuerySegment::Transform(_) => None,
+        }
+    }
+    */
+    pub fn resource_query_segment(&self) -> Option<ResourceQuerySegment> {
+        match self {
+            QuerySegment::Resource(rqs) => Some(rqs.to_owned()),
+            QuerySegment::Transform(_) => None,
+        }
+    }
+    pub fn transform_query_segment(&self) -> Option<TransformQuerySegment> {
+        match self {
+            QuerySegment::Resource(_) => None,
+            QuerySegment::Transform(tqs) => Some(tqs.to_owned()),
         }
     }
     pub fn is_action_request(&self) -> bool {
@@ -838,6 +852,41 @@ impl Query {
             }
         }
     }
+
+    pub fn all_predecessors(&self) -> Vec<(Option<Query>, Option<QuerySegment>)> {
+        println!("all_predecessors: {}", self.encode());
+        let mut result = vec![];
+        let mut qp = Some(self);
+        let mut qr: Option<QuerySegment> = None;
+        let mut buff: Option<Query> = None;
+        while qp.is_some() {
+            /*
+            println!(
+                "qp/qr: {}  {}",
+                qp.unwrap().encode(),
+                qr.as_ref().map_or("None".to_owned(), |x| x.encode())
+            );
+            */
+            if qp.unwrap().is_empty() {
+                break;
+            }
+            let x = (qp.map(|x| x.clone()), (&qr).clone());
+            result.push(x);
+            let (q, r) = qp.unwrap().predecessor();
+            buff = q;
+            qp = buff.as_ref();
+            qr = match (&qr, r) {
+                (None, None) => None,
+                (None, Some(r)) => Some(r),
+                (Some(x), None) => Some(x.clone()),
+                (Some(QuerySegment::Transform(x)), Some(QuerySegment::Transform(r))) => {
+                    Some(QuerySegment::Transform(r+x.clone()))
+                }
+                _ => None,
+            };
+        }
+        result
+    }
     /// Query without the filename.
     pub fn without_filename(self) -> Query {
         if (&self).filename().is_none() {
@@ -956,5 +1005,24 @@ mod tests {
         let head = SegmentHeader::new();
         assert_eq!(head.encode(), "-");
         Ok(())
+    }
+
+    #[test]
+    fn add_filename(){
+        let action = ActionRequest::new("action".to_owned());
+        let filename = ResourceName::new("file.txt".to_owned());
+        let a = TransformQuerySegment {
+            query: vec![action],
+            filename: None,
+            ..Default::default()
+        };
+        let f=TransformQuerySegment{
+            query: vec![],
+            filename: Some(filename),
+            ..Default::default()
+        };
+
+        let q = a + f;
+        assert_eq!(q.encode(), "action/file.txt");
     }
 }

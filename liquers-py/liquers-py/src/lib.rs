@@ -1,6 +1,6 @@
-use pyo3::{prelude::*};
+use pyo3::prelude::*;
 
-use liquers_core::{parse::parse_key};
+use liquers_core::parse::parse_key;
 
 #[pyclass]
 struct Position(liquers_core::query::Position);
@@ -8,8 +8,12 @@ struct Position(liquers_core::query::Position);
 #[pymethods]
 impl Position {
     #[new]
-    fn new(offset:usize, line:u32, column:usize) -> Self {
-        Position(liquers_core::query::Position { offset, line, column })
+    fn new(offset: usize, line: u32, column: usize) -> Self {
+        Position(liquers_core::query::Position {
+            offset,
+            line,
+            column,
+        })
     }
 
     #[staticmethod]
@@ -33,9 +37,12 @@ impl Position {
     }
 
     fn __repr__(&self) -> String {
-        format!("Position(offset={}, line={}, column={})", self.0.offset, self.0.line, self.0.column)
+        format!(
+            "Position(offset={}, line={}, column={})",
+            self.0.offset, self.0.line, self.0.column
+        )
     }
- 
+
     fn __str__(&self) -> String {
         self.0.to_string()
     }
@@ -47,8 +54,11 @@ struct ActionParameter(liquers_core::query::ActionParameter);
 #[pymethods]
 impl ActionParameter {
     #[new]
-    fn new(parameter: String, position:&Position) -> Self {
-        ActionParameter(liquers_core::query::ActionParameter::new_string(parameter).with_position(position.0.clone()))
+    fn new(parameter: String, position: &Position) -> Self {
+        ActionParameter(
+            liquers_core::query::ActionParameter::new_string(parameter)
+                .with_position(position.0.clone()),
+        )
     }
 
     #[getter]
@@ -63,7 +73,7 @@ impl ActionParameter {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.to_string()
     }
@@ -75,7 +85,7 @@ struct ResourceName(liquers_core::query::ResourceName);
 #[pymethods]
 impl ResourceName {
     #[new]
-    fn new(name: String, position:&Position) -> Self {
+    fn new(name: String, position: &Position) -> Self {
         ResourceName(liquers_core::query::ResourceName::new(name).with_position(position.0.clone()))
     }
 
@@ -91,7 +101,7 @@ impl ResourceName {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode().to_string()
     }
@@ -103,15 +113,15 @@ struct ActionRequest(liquers_core::query::ActionRequest);
 #[pymethods]
 impl ActionRequest {
     #[new]
-    fn new(name:&str) -> Self {
+    fn new(name: &str) -> Self {
         ActionRequest(liquers_core::query::ActionRequest::new(name.to_owned()))
     }
 
     #[staticmethod]
-    fn from_arguments(name:&str) -> Self {
+    fn from_arguments(name: &str) -> Self {
         ActionRequest(liquers_core::query::ActionRequest::new(name.to_owned()))
     }
-    
+
     #[getter]
     fn name(&self) -> String {
         self.0.name.to_string()
@@ -125,9 +135,9 @@ impl ActionRequest {
         let mut result = vec![self.0.name.to_string()];
         for parameter in &self.0.parameters {
             match parameter {
-                liquers_core::query::ActionParameter::String(s,_) => result.push(s.to_string()),
-                liquers_core::query::ActionParameter::Link(q,_) => result.push(q.encode()),
-            }   
+                liquers_core::query::ActionParameter::String(s, _) => result.push(s.to_string()),
+                liquers_core::query::ActionParameter::Link(q, _) => result.push(q.encode()),
+            }
         }
         result
     }
@@ -135,7 +145,7 @@ impl ActionRequest {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -164,12 +174,12 @@ impl SegmentHeader {
     fn level(&self) -> usize {
         self.0.level
     }
-/* 
-    #[getter]
-    fn parameters(&self) -> Vec<ActionParameter> {
-        self.0.parameters.iter().map(|p| HeaderParameter(p.clone())).collect()
-    }    
-*/
+    /*
+        #[getter]
+        fn parameters(&self) -> Vec<ActionParameter> {
+            self.0.parameters.iter().map(|p| HeaderParameter(p.clone())).collect()
+        }
+    */
 
     #[getter]
     fn resource(&self) -> bool {
@@ -187,7 +197,7 @@ impl SegmentHeader {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -207,13 +217,17 @@ impl TransformQuerySegment {
     fn header(&self) -> Option<SegmentHeader> {
         match &self.0.header {
             Some(h) => Some(SegmentHeader(h.clone())),
-            None => None            
+            None => None,
         }
     }
 
     #[getter]
     fn query(&self) -> Vec<ActionRequest> {
-        self.0.query.iter().map(|q| ActionRequest(q.clone())).collect()
+        self.0
+            .query
+            .iter()
+            .map(|q| ActionRequest(q.clone()))
+            .collect()
     }
 
     #[getter]
@@ -222,8 +236,11 @@ impl TransformQuerySegment {
     }
 
     fn predecessor(&self) -> (Option<TransformQuerySegment>, Option<TransformQuerySegment>) {
-        let (p,r) = self.0.predecessor();
-        (p.map(|s| TransformQuerySegment(s)), r.map(|s| TransformQuerySegment(s)))
+        let (p, r) = self.0.predecessor();
+        (
+            p.map(|s| TransformQuerySegment(s)),
+            r.map(|s| TransformQuerySegment(s)),
+        )
     }
 
     fn is_empty(&self) -> bool {
@@ -240,7 +257,7 @@ impl TransformQuerySegment {
 
     fn action(&self) -> Option<ActionRequest> {
         self.0.action().map(|a| ActionRequest(a))
-    }   
+    }
 
     fn encode(&self) -> String {
         self.0.encode()
@@ -249,7 +266,7 @@ impl TransformQuerySegment {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -274,7 +291,7 @@ impl Key {
     }
 
     fn __getitem__(&self, index: isize) -> ResourceName {
-        ResourceName(self.0.0.get(index as usize).unwrap().clone())
+        ResourceName(self.0 .0.get(index as usize).unwrap().clone())
     }
 
     fn __repr__(&self) -> String {
@@ -294,7 +311,6 @@ impl Key {
     fn to_string(&self) -> String {
         self.0.to_string()
     }
-
 }
 
 #[pyclass]
@@ -311,14 +327,14 @@ impl ResourceQuerySegment {
     fn header(&self) -> Option<SegmentHeader> {
         match &self.0.header {
             Some(h) => Some(SegmentHeader(h.clone())),
-            None => None            
+            None => None,
         }
     }
 
     fn segment_name(&self) -> String {
         match self.0.header {
             Some(ref h) => h.name.to_string(),
-            None => "".to_string()
+            None => "".to_string(),
         }
     }
 
@@ -338,7 +354,7 @@ impl ResourceQuerySegment {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -348,7 +364,7 @@ impl ResourceQuerySegment {
 struct QuerySegment(liquers_core::query::QuerySegment);
 
 #[pymethods]
-impl QuerySegment{
+impl QuerySegment {
     #[new]
     fn new() -> Self {
         QuerySegment(liquers_core::query::QuerySegment::default())
@@ -362,8 +378,12 @@ impl QuerySegment{
     #[getter]
     fn header(&self) -> Option<SegmentHeader> {
         match &self.0 {
-            liquers_core::query::QuerySegment::Transform(t) => t.header.as_ref().map(|h| SegmentHeader(h.clone())),
-            liquers_core::query::QuerySegment::Resource(r) => r.header.as_ref().map(|h| SegmentHeader(h.clone())),
+            liquers_core::query::QuerySegment::Transform(t) => {
+                t.header.as_ref().map(|h| SegmentHeader(h.clone()))
+            }
+            liquers_core::query::QuerySegment::Resource(r) => {
+                r.header.as_ref().map(|h| SegmentHeader(h.clone()))
+            }
         }
     }
 
@@ -394,7 +414,7 @@ impl QuerySegment{
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -417,7 +437,11 @@ impl Query {
 
     #[getter]
     fn segments(&self) -> Vec<QuerySegment> {
-        self.0.segments.iter().map(|s| QuerySegment(s.clone())).collect()
+        self.0
+            .segments
+            .iter()
+            .map(|s| QuerySegment(s.clone()))
+            .collect()
     }
 
     fn filename(&self) -> Option<String> {
@@ -446,7 +470,7 @@ impl Query {
 
     fn is_resource_query(&self) -> bool {
         self.0.is_resource_query()
-    }   
+    }
 
     fn resource_query(&self) -> Option<ResourceQuerySegment> {
         self.0.resource_query().map(|s| ResourceQuerySegment(s))
@@ -459,23 +483,29 @@ impl Query {
     fn action(&self) -> Option<ActionRequest> {
         if self.0.is_action_request() {
             self.0.action().map(|a| ActionRequest(a))
-        }
-        else {
+        } else {
             None
         }
     }
 
     fn predecessor(&self) -> (Option<Query>, Option<QuerySegment>) {
-        let (p,r) = self.0.predecessor();
+        let (p, r) = self.0.predecessor();
         (p.map(|s| Query(s)), r.map(|s| QuerySegment(s)))
     }
 
+    fn all_predecessors(&self) -> Vec<(Option<Query>, Option<QuerySegment>)> {
+        self.0
+            .all_predecessors()
+            .into_iter()
+            .map(|(p, r)| (p.map(|s| Query(s)), r.map(|s| QuerySegment(s))))
+            .collect()
+    }
+
     //#[args(n = 30)]
-    fn short(&self, n:usize) -> String {
+    fn short(&self, n: usize) -> String {
         self.0.short(n)
     }
 
-    
     fn encode(&self) -> String {
         self.0.encode()
     }
@@ -483,7 +513,7 @@ impl Query {
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
- 
+
     fn __str__(&self) -> String {
         self.0.encode()
     }
@@ -493,7 +523,9 @@ impl Query {
 fn parse(query: &str) -> PyResult<Query> {
     match liquers_core::parse::parse_query(query) {
         Ok(q) => Ok(Query(q)),
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string()))
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+            e.to_string(),
+        )),
     }
 }
 

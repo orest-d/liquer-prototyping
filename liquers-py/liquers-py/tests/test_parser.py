@@ -104,12 +104,12 @@ class TestParser:
 
     def test_all_predecessors1(self):
         p = [p.encode() for p, r in parse("ghi/jkl/file.txt").all_predecessors()]
-        assert p == ["ghi/jkl/file.txt", "ghi/jkl", "ghi", ""]
+        assert p == ["ghi/jkl/file.txt", "ghi/jkl", "ghi"]
         r = [
             (None if r is None else r.encode())
             for p, r in parse("ghi/jkl/file.txt").all_predecessors()
         ]
-        assert r == [None, "file.txt", "jkl/file.txt", "ghi/jkl/file.txt"]
+        assert r == [None, "file.txt", "jkl/file.txt"]
 
     def test_all_predecessors2(self):
         p = [
