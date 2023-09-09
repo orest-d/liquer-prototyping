@@ -358,6 +358,10 @@ impl ResourceQuerySegment {
         self.0.encode()
     }
 
+    fn to_absolute(&self, cwd_key:&Key) -> ResourceQuerySegment {
+        ResourceQuerySegment(self.0.to_absolute(&cwd_key.0))
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.0)
     }
@@ -416,6 +420,10 @@ impl QuerySegment {
 
     fn encode(&self) -> String {
         self.0.encode()
+    }
+
+    fn to_absolute(&self, cwd_key:&Key) -> QuerySegment {
+        QuerySegment(self.0.to_absolute(&cwd_key.0))
     }
 
     fn __repr__(&self) -> String {
@@ -515,6 +523,10 @@ impl Query {
 
     fn encode(&self) -> String {
         self.0.encode()
+    }
+
+    fn to_absolute(&self, cwd_key:&Key) -> Query {
+        Query(self.0.to_absolute(&cwd_key.0))
     }
 
     fn __repr__(&self) -> String {

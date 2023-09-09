@@ -503,6 +503,9 @@ impl Key {
     /// Return a parent key - i.e. a key without the last element.
     pub fn parent(&self) -> Self {
         let mut key = Vec::new();
+        if self.is_empty() {
+            return Key(vec![]);
+        }
         for x in self.iter().take(self.len() - 1) {
             key.push(x.clone());
         }
@@ -639,13 +642,26 @@ impl ResourceQuerySegment {
         self.key.len() == 1
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.key.len()
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.key.is_empty()
     }
+
+    /// Convert a resource query to an absolute resource query - i.e. interpret "." and ".." elements.
+    /// The cwd_key is a "current working directory" key - i.e. a key to which "." and ".." elements are relative to.
+    /// This happens regardless the resource name or other header parameters.
+    /// Note that the cwd_key should be absolute, i.e. it should not contain any "." or ".." elements.
+    /// This is not checked by the function.
+    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+        Self {
+            header: self.header.clone(),
+            key: self.key.to_absolute(cwd_key),
+        }
+    }
+
 }
 
 impl Display for ResourceQuerySegment {
@@ -661,6 +677,7 @@ pub enum QuerySegment {
 }
 
 impl QuerySegment {
+    /// Encode query segment as a string
     pub fn encode(&self) -> String {
         match self {
             QuerySegment::Resource(rqs) => rqs.encode(),
@@ -668,6 +685,7 @@ impl QuerySegment {
         }
     }
 
+    /// Encode query segment as a string, resource always with a header
     pub fn encode_with_header(&self) -> String {
         match self {
             QuerySegment::Resource(rqs) => rqs.encode_with_header(),
@@ -675,6 +693,16 @@ impl QuerySegment {
         }
     }
 
+    /// Convert a query segment to an absolute query segment - i.e. interpret "." and ".." elements.
+    /// See ResourceQuerySegment::to_absolute for details.
+    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+        match self {
+            QuerySegment::Resource(rqs) => QuerySegment::Resource(rqs.to_absolute(cwd_key)),
+            QuerySegment::Transform(_) => self.clone(),
+        }
+    }
+
+    /// Return filename if present, None otherwise.
     pub fn filename(&self) -> Option<ResourceName> {
         match self {
             QuerySegment::Resource(rqs) => rqs.filename().clone(),
@@ -682,6 +710,7 @@ impl QuerySegment {
         }
     }
 
+    /// Return length of query segment - i.e. number of actions or resource names in the query segment
     pub fn len(&self) -> usize {
         match self {
             QuerySegment::Resource(rqs) => rqs.len(),
@@ -689,12 +718,16 @@ impl QuerySegment {
         }
     }
 
+    /// Return true if the query segment is empty, i.e. has no actions or resource names.
     pub fn is_empty(&self) -> bool {
         match self {
             QuerySegment::Resource(rqs) => rqs.is_empty(),
             QuerySegment::Transform(tqs) => tqs.is_empty(),
         }
     }
+
+    /// Return true if the query segment is a namespace definition.
+    /// See TransformQuerySegment::is_ns for details.
     pub fn is_ns(&self) -> bool {
         match self {
             QuerySegment::Resource(_) => false,
@@ -812,6 +845,15 @@ impl Query {
     }
     pub fn last_ns(&self) -> Option<Vec<ActionParameter>> {
         self.transform_query().and_then(|x| x.last_ns())
+    }
+
+    /// Convert a query to an absolute query - i.e. interpret "." and ".." elements.
+    /// See ResourceQuerySegment::to_absolute for details.
+    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+        Self {
+            segments: self.segments.iter().map(|x| x.to_absolute(cwd_key)).collect(),
+            absolute: self.absolute,
+        }
     }
 
     /// Returns true if the query is a pure transformation query - i.e. a sequence of actions.
@@ -1102,5 +1144,13 @@ mod tests {
         assert_eq!(parse_key("../../../../x").unwrap().to_absolute(&cwd_key).encode(), "x");
         assert_eq!(parse_key("A/B/./x").unwrap().to_absolute(&cwd_key).encode(), "A/B/x");
         assert_eq!(parse_key("A/B/../x").unwrap().to_absolute(&cwd_key).encode(), "A/x");
+    }
+    #[test]
+    fn key_parent() {
+        let key = parse_key("a/b/c").unwrap();
+        assert_eq!(key.parent().encode(), "a/b");
+        assert_eq!(key.parent().parent().encode(), "a");
+        assert_eq!(key.parent().parent().parent().encode(), "");
+        assert_eq!(key.parent().parent().parent().parent().encode(), "");        
     }
 }
