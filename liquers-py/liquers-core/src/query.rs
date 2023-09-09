@@ -574,7 +574,7 @@ impl ResourceQuerySegment {
     pub fn is_filename(&self) -> bool {
         self.key.len() == 1
     }
-        
+
     fn len(&self) -> usize {
         self.key.len()
     }
@@ -801,13 +801,19 @@ impl Query {
     pub fn predecessor(&self) -> (Option<Query>, Option<QuerySegment>) {
         match &self.segments.last() {
             None => (None, None),
-            Some(QuerySegment::Resource(rqs)) => (
-                Some(Query {
-                    segments: self.up_to_last_segment(),
-                    absolute: self.absolute,
-                }),
-                Some(QuerySegment::Resource(rqs.clone())),
-            ),
+            Some(QuerySegment::Resource(rqs)) => {
+                if self.is_resource_query() {
+                    (None, None)
+                } else {
+                    (
+                        Some(Query {
+                            segments: self.up_to_last_segment(),
+                            absolute: self.absolute,
+                        }),
+                        Some(QuerySegment::Resource(rqs.clone())),
+                    )
+                }
+            }
             Some(QuerySegment::Transform(tqs)) => {
                 let (p, r) = tqs.predecessor();
                 if p.as_ref().map_or(true, |x| x.is_empty()) {

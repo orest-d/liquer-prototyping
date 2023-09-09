@@ -806,4 +806,33 @@ mod tests {
         assert_eq!(q.encode(), "abc/def/-/xxx/-q/qqq");
         Ok(())
     }
+    #[test]
+    fn predecessor2()-> Result<(), Error>{
+        let q = parse_query("-R/abc/def/-x/ghi/jkl/file.txt")?;
+        let (p, r) = q.predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/abc/def/-x/ghi/jkl");
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/file.txt");
+        assert!(!r.as_ref().unwrap().is_empty());
+        assert!(r.as_ref().unwrap().is_filename());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/abc/def/-x/ghi");
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/jkl");
+        assert!(!r.as_ref().unwrap().is_empty());
+        assert!(!r.as_ref().unwrap().is_filename());
+        assert!(r.as_ref().unwrap().is_action_request());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/abc/def");
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/ghi");
+        assert!(!r.as_ref().unwrap().is_empty());
+        assert!(!r.as_ref().unwrap().is_filename());
+        assert!(r.as_ref().unwrap().is_action_request());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert!(p.is_none());
+        assert!(r.is_none());
+
+        Ok(())
+    }
 }
