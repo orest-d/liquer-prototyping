@@ -1,7 +1,43 @@
+# Questions
+- do we need the ability to cancel a job? - would be nice from GUI, so yes - it would kill and restart a worker
+- Cache must always be available. Contains must be fast. - ok... a global cache, not just any kind of cache
+- Maybe the global cache should be interfaced via a channel? - maybe as an option, but this would not be optimal e.g. for redis 
+- Result state type should be indicated in command metadata (optional)
+- is_serializable should be indicated in command in a conservative way (required?) - this is !inline
+- main_thread should probably be implemented as a local worker in the main thread
+- do we need two or more states - main_thread_ waiting, pending, running ? - let's try without since it is a main worker
+- If main_thread will be executed immediately, the state will (probably) never be observed in singlethread server - probably
+- local execution/not serializable/volatile (? volatile may be technically shared if serializable) - studied in running modes
+- Should volatile trigger local execution? - volatile is always executed, hence needs to be executed where it is needed
+- is_serializable should be part of the StateType; is_serializable should mean both read and write. E.g. when Matplotlib 
+Fig is write only, it is not serializable.
+- volatile is transitive, local execution and serializable (in general) is not
+- should there be a non-transitive volatile? yes; how about a volatile and transitive_volatile instead?
+- main_thread (local_execution) is defined on a command or query level. requires_local_execution(query)
+- main_thread, Local execution is not a good name. inline execution? blocking? - main_thread; inline may or may not be blocking
+- Note that inline execution is blocking - only if result is required - this will make a difference between evaluate and submit!
+- There might be a difference between main thread and inline execution. quick volatile => inline, sqlite => main thread; mainthread can't be executed in the worker, inline can
+- Argument: worker ready state in server must be conservatively maintained
+- If job state is not accepted by worker shortly after submitted to worker, action should be taken (houskeeping)
+- How do we identify a crash of a worker? - it would be nice to keep the distinction
+- Crash of a query execution is different than worker crash? - let's go with yes
+- Somehow we command should indicate that it will be running for a long time - maybe later when workers would differentiate
+- Worker crash should trigger a worker restart (housekeeping) and maybe a job restart? - yes, but not restarting queries, rather treating them as crashed (housekeeping)
+- We may need a cancel_job methods and messages
+- Cache should support quick return of serialized form
+- MemoryCache supports non-serializable state types, hence there is cachable non-serializable (could be inline)
+- Maybe cachable-nonserializable and memory-cache should be treated as a special case (local cache) - hmm... maybe - optional for now - this is an optimization of a cache access
+- workers may need a number to support a redis ZSET, redlock or transaction (https://stackoverflow.com/questions/41273498/how-to-synchronise-multiple-writer-on-redis)
+- Do we need to support futures/promisses? - yes - probably concurrent.futures.Future, since that can be converted to asyncio.futures.Future (https://stackoverflow.com/questions/29902908/what-is-the-difference-between-concurrent-futures-and-asyncio-futures) 
+- Do we need a future? Do we need to support multiple forms? - let's stick with concurrent.futures.Future
+- We are going to have a server future and worker future. Possibly a server thread future. - let's try to avoid the worker future - worker should be as simple as possible and should be single-threaded
+- Do we need multiple progress messages or is one enough? - let's start with a single message updating the whole feedback
+
+
 # Job nomenclature
 succeed   - finished successfully producing a result
 failed    - finished with an error
-crashed   - crashed in an environment rather than in the job execution - i.e. a bug or runtime error; treated as failed
+crashed   - crashed in an environment rather than in the job execution - i.e. a bug or runtime error; recorded as a separate state, but treated as failed
 cancelled - finished by request - treated as failed
 finished  - don't use
 done      - don't use
