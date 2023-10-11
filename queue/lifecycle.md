@@ -33,6 +33,53 @@ Fig is write only, it is not serializable.
 - We are going to have a server future and worker future. Possibly a server thread future. - let's try to avoid the worker future - worker should be as simple as possible and should be single-threaded
 - Do we need multiple progress messages or is one enough? - let's start with a single message updating the whole feedback
 
+# Messages
+
+Ping               - Server testing worker; it should synchronize the time (optionally if configured)
+Pong               - Worker replies to Ping; it should synchronize the time (optionally if configured)
+WorkerStarting     - Worker sends before it is initialized
+WorkerReady        - Worker innitialized and ready to process jobs
+TerminateWorker    - Server requests worker to terminate (ASAP) - all the jobs get cancelled
+WorkerTerminated   - Worker announcing a smooth exit
+SubmitJob          - server asking worker to process a job
+CancelJob          - server asking worker to cancel a job
+WorkerJobCancelled - worker stating that the job was cancelled
+WorkerAcceptedJob  - worker replies immediately after it got SubmitJob - otherwise another worker will get the request; old request should be ignorred (job reassigned)
+JobReassigned      - server says that it lost the patience and it will ask another worker
+WorkerJobRunning   - worker says that the job is running (job status update?)
+WorkerJobWaiting   - worker says that the job is waiting for a dependency
+WorkerJobPending   - worker says that the job is scheduled but not running
+WorkerJobProgress  - worker communicates the job progress
+WorkerStatus       - General worker status message
+WorkerJobSubquery  - worker announces that it needs to execute a sub-query - as a dependency
+JobPending         - server replies to earlier WorkerJobSubquery - job pending
+JobCompleted       - server replies to earlier WorkerJobSubquery - job completed
+JobReadyInCache    - server replies to earlier WorkerJobSubquery - job ready in cache
+JobFailed          - server replies to earlier WorkerJobSubquery - job failed
+JobCancelled       - server replies to earlier WorkerJobSubquery - job canceled
+JobResult          - server replies to earlier WorkerJobSubquery - job completed, sending the result
+InlineJob          - server replies to earlier WorkerJobSubquery - job result can't be sent or cached, execute locally
+AssignJob          - server replies to earlier WorkerJobSubquery - job assigned to the worker
+CancelJob          - server asks worker to cancel the job
+
+
+| Server          | Worker                |
+|-----------------|-----------------------|
+| Ping            | Pong                  |
+| -               | WorkerStarting        |
+| -               | WorkerReady           |
+| SubmitJob       | WorkerJobSubquery     |
+| AssignJob       | -                     |
+| -               | WorkerAcceptedJob     |
+| JobPending      | WorkerJobPending      |
+|                 | WorkerJobWaiting      |
+|                 | WorkerJobRunning      |
+| -               | WorkerJobProgress     |
+| KillJob         | -                     |
+| JobReadyInCache | WorkerJobReadyInCache |
+| JobResult       | WorkerJobResult       |
+| JobFailed       | WorkerJobFailed       |
+| InlineJob       | WorkerInlineJob       |
 
 # Job nomenclature
 succeed   - finished successfully producing a result
