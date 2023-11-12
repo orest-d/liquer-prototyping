@@ -72,6 +72,24 @@ impl ActionParameter {
             ActionParameter::Link(_, _) => false,
         }
     }
+    pub fn string_value(&self) -> Option<String> {
+        match self {
+            ActionParameter::String(x, _) => Some(x.to_owned()),
+            ActionParameter::Link(_, _) => None,
+        }
+    }
+    pub fn is_link(&self) -> bool {
+        match self {
+            ActionParameter::String(_, _) => false,
+            ActionParameter::Link(_, _) => true,
+        }
+    }
+    pub fn link_value(&self) -> Option<Query> {
+        match self {
+            ActionParameter::String(_, _) => None,
+            ActionParameter::Link(x, _) => Some(x.to_owned()),
+        }
+    }
     pub fn with_position(self, position: Position) -> Self {
         match self {
             Self::String(s, _) => Self::String(s, position),
