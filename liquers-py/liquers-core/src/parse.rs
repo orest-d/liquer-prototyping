@@ -809,6 +809,40 @@ mod tests {
         assert_eq!(q.encode(), "abc/def/-/xxx/-q/qqq");
         Ok(())
     }
+
+    #[test]
+    fn predecessor1() -> Result<(), Error> {
+        let q = parse_query("-x/ghi/jkl/file.txt")?;
+        let (p, r) = q.predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-x/ghi/jkl");
+        assert!(p.as_ref().unwrap().is_transform_query());
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/file.txt");
+        assert!(r.as_ref().unwrap().is_transform_query_segment());
+        assert!(!r.as_ref().unwrap().is_empty());
+        assert!(r.as_ref().unwrap().is_filename());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-x/ghi");
+        assert!(p.as_ref().unwrap().is_transform_query());
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/jkl");
+        assert!(r.as_ref().unwrap().is_transform_query_segment());
+        assert!(!r.as_ref().unwrap().is_empty());
+        assert!(!r.as_ref().unwrap().is_filename());
+        assert!(r.as_ref().unwrap().is_action_request());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert!(p.as_ref().unwrap().is_empty());
+        assert_eq!(r.as_ref().unwrap().encode(), "-x/ghi");
+        assert!(r.as_ref().unwrap().is_transform_query_segment());
+
+        let (p, r) = p.unwrap().predecessor();
+        assert!(p.is_none());
+        assert!(r.is_none());
+
+        Ok(())
+    }
+
+
     #[test]
     fn predecessor2() -> Result<(), Error> {
         let q = parse_query("-R/abc/def/-x/ghi/jkl/file.txt")?;
@@ -840,6 +874,40 @@ mod tests {
     }
 
     #[test]
+    fn predecessor3() -> Result<(), Error> {
+        let q = parse_query("-R/a/b/-/c/d")?;
+        let (p, r) = q.predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/a/b/-/c");
+        assert_eq!(r.as_ref().unwrap().encode(), "-/d");
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/a/b");
+        assert_eq!(r.as_ref().unwrap().encode(), "-/c");
+        let (p, r) = p.unwrap().predecessor();
+        assert!(p.is_none());
+        assert!(r.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn predecessor3a() -> Result<(), Error> {
+        let q = parse_query("-R/x/y/-R/a/b/-/c/d")?;
+        let (p, r) = q.predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/x/y/-R/a/b/-/c");
+        assert_eq!(r.as_ref().unwrap().encode(), "-/d");
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/x/y/-R/a/b");
+        assert_eq!(r.as_ref().unwrap().encode(), "-/c");
+        let (p, r) = p.unwrap().predecessor();
+        assert_eq!(p.as_ref().unwrap().encode(), "-R/x/y");
+        assert_eq!(r.as_ref().unwrap().encode(), "-R/a/b");
+        let (p, r) = p.unwrap().predecessor();
+        assert!(p.is_none());
+        assert!(r.is_none());
+        Ok(())
+    }
+
+   
+    #[test]
     fn all_predecessors1() -> Result<(), Error> {
         let p: Vec<_> = parse_query("ghi/jkl/file.txt")?
             .all_predecessors()
@@ -855,6 +923,29 @@ mod tests {
         assert_eq!(r, vec![None, Some("file.txt".to_owned()), Some("jkl/file.txt".to_owned())]);
         Ok(())
     }
+
+    #[test]
+    fn all_predecessors_tuples1() -> Result<(), Error> {
+        let p: Vec<_> = parse_query("ghi/jkl/file.txt")?
+            .all_predecessor_tuples()
+            .iter()
+            .map(|(x, y)| format!("{} - {}", x.encode(), y.encode()))
+            .collect();
+        assert_eq!(p, vec!["ghi/jkl - file.txt", "ghi - jkl", " - ghi"]);
+        Ok(())
+    }
+
+    #[test]
+    fn all_predecessors_tuples1a() -> Result<(), Error> {
+        let p: Vec<_> = parse_query("-R/xxx/yyy/-/ghi/jkl/file.txt")?
+            .all_predecessor_tuples()
+            .iter()
+            .map(|(x, y)| format!("{} - {}", x.encode(), y.encode()))
+            .collect();
+        assert_eq!(p, vec!["-R/xxx/yyy/-/ghi/jkl - -/file.txt", "-R/xxx/yyy/-/ghi - -/jkl", "-R/xxx/yyy - -/ghi", " - -R/xxx/yyy"]);
+        Ok(())
+    }
+
     #[test]
     fn predecessor_add_filename1()-> Result<(), Error> {
         let q = parse_query("ghi/jkl/file.txt")?;

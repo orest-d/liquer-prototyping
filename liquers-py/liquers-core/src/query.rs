@@ -159,8 +159,12 @@ impl ResourceName {
         &self.name
     }
     /// Return file extension if present, None otherwise.
-    pub fn extension(self) -> Option<String> {
-        self.name.split(".").last().map(|s| s.to_owned())
+    pub fn extension(&self) -> Option<String> {
+        if self.name.contains('.') {
+            self.name.split(".").last().map(|s| s.to_owned())
+        } else {
+            None
+        }
     }
 }
 
@@ -340,6 +344,14 @@ pub struct TransformQuerySegment {
 
 #[allow(dead_code)]
 impl TransformQuerySegment {
+    pub fn new() -> TransformQuerySegment {
+        TransformQuerySegment {
+            header: None,
+            query: vec![],
+            filename: None,
+        }
+    }
+
     pub fn predecessor(&self) -> (Option<TransformQuerySegment>, Option<TransformQuerySegment>) {
         if let Some(filename) = &self.filename {
             (
@@ -496,6 +508,11 @@ impl Key {
         self.0.last()
     }
 
+    /// Filename extension if present, None otherwise.
+    pub fn extension(&self) -> Option<String> {
+        self.filename().and_then(|x| x.extension())
+    }
+
     /// Return the length of the key (number of elements)
     pub fn len(&self) -> usize {
         self.0.len()
@@ -600,6 +617,15 @@ pub struct ResourceQuerySegment {
 
 #[allow(dead_code)]
 impl ResourceQuerySegment {
+
+    /// Create a new empty resource query segment
+    pub fn new() -> ResourceQuerySegment {
+        ResourceQuerySegment {
+            header: None,
+            key: Key::new(),
+        }
+    }
+
     /// Return resource query position
     pub fn position(&self) -> Position {
         if let Some(header) = &self.header {
@@ -695,6 +721,15 @@ pub enum QuerySegment {
 }
 
 impl QuerySegment {
+    /// Create a new empty transform query segment
+    pub fn empty_transform_query_segment() -> Self {
+        QuerySegment::Transform(TransformQuerySegment::new())
+    }
+    /// Create a new empty resource query segment
+    pub fn empty_resource_query_segment() -> Self {
+        QuerySegment::Resource(ResourceQuerySegment::new())
+    }
+
     /// Encode query segment as a string
     pub fn encode(&self) -> String {
         match self {
@@ -838,6 +873,14 @@ pub struct Query {
 
 #[allow(dead_code)]
 impl Query {
+    /// Create a new empty query
+    pub fn new() -> Query {
+        Query {
+            segments: vec![],
+            absolute: false,
+        }
+    }
+
     /// Return filename if present, None otherwise.
     pub fn filename(&self) -> Option<ResourceName> {
         match self.segments.last() {
@@ -977,8 +1020,8 @@ impl Query {
         }
     }
 
+    /// Return all predecessors of the query as a vector.
     pub fn all_predecessors(&self) -> Vec<(Option<Query>, Option<QuerySegment>)> {
-        println!("all_predecessors: {}", self.encode());
         let mut result = vec![];
         let mut qp = Some(self);
         let mut qr: Option<QuerySegment> = None;
@@ -1011,6 +1054,55 @@ impl Query {
         }
         result
     }
+
+    pub fn all_predecessor_tuples(&self) -> Vec<(Query, QuerySegment)> {
+        let mut result = vec![];
+        let mut qp = Some(self.clone());
+        let mut qr: Option<QuerySegment> = None;
+        let mut last = None;
+        fn add_to_result(
+            result: &mut Vec<(Query, QuerySegment)>,
+            qp: &Option<Query>,
+            qr: &Option<QuerySegment>,
+        ) {
+            match (qp,qr){
+                (Some(qp), Some(qr)) => {
+                    if (!qp.is_empty()) || (!qr.is_empty()){
+                        result.push((qp.clone(), qr.clone()));
+                    } 
+                },
+                (Some(qp), None) => {
+                    if !qp.is_empty(){
+                        result.push((qp.clone(), QuerySegment::empty_transform_query_segment()));
+                    }
+                },
+                (None, Some(qr)) => {
+                    if !qr.is_empty() {
+                        result.push((Query::new(), qr.clone()));
+                    }
+                },
+                (None, None) => {},
+            }
+        }
+        while qp.is_some() {
+            if !qp.as_ref().unwrap().is_empty(){
+                last = qp.clone();
+            }
+            else{
+                last = None;
+            }
+            let (p, r) = qp.unwrap().predecessor();
+            add_to_result(&mut result, &p, &r);
+            qp = p;
+        }
+
+        if let Some(r) = last{
+            add_to_result(&mut result, &None, &r.resource_query().map(|x| QuerySegment::Resource(x)));
+        }
+        result
+    }
+
+
     /// Query without the filename.
     pub fn without_filename(self) -> Query {
         if (&self).filename().is_none() {
@@ -1062,6 +1154,12 @@ impl Query {
     }
     pub fn len(&self) -> usize {
         self.segments.len()
+    }
+}
+
+impl Display for Query {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.encode())
     }
 }
 
@@ -1170,5 +1268,22 @@ mod tests {
         assert_eq!(key.parent().parent().encode(), "a");
         assert_eq!(key.parent().parent().parent().encode(), "");
         assert_eq!(key.parent().parent().parent().parent().encode(), "");        
+    }
+    #[test]
+    fn test_key_extension(){
+        let key = parse_key("").unwrap();
+        assert_eq!(key.extension(), None);
+        let key = parse_key("a").unwrap();
+        assert_eq!(key.extension(), None);
+        let key = parse_key("a/b/c").unwrap();
+        assert_eq!(key.extension(), None);
+        let key = parse_key("a/b/c.txt").unwrap();
+        assert_eq!(key.extension(), Some("txt".to_owned()));
+        let key = parse_key("c.txt").unwrap();
+        assert_eq!(key.extension(), Some("txt".to_owned()));
+        let key = parse_key(".txt").unwrap();
+        assert_eq!(key.extension(), Some("txt".to_owned()));
+        let key = parse_key("arch.tar.gz").unwrap();
+        assert_eq!(key.extension(), Some("gz".to_owned()));
     }
 }
