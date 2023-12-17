@@ -1,32 +1,35 @@
 # Questions
-- should worker messages implement Cache and store interface?
 - do we need the ability to cancel a job? - would be nice from GUI, so yes - it would kill and restart a worker
 - Cache must always be available. Contains must be fast. - ok... a global cache, not just any kind of cache
 - Maybe the global cache should be interfaced via a channel? - maybe as an option, but this would not be optimal e.g. for redis 
+- should worker messages implement cache and store interface? - probably not, it could be more efficient to have worker cache and store interfaces 
 - Result state type should be indicated in command metadata (optional)
-- is_serializable should be indicated in command in a conservative way (required?) - this is !inline
+- is_serializable should be indicated in command in a conservative way (required?) - this is !inline (unless if there is other reason for inline)
+- is there other reason for inline besides nonserializability? - possibly specialized workers, but that could be indicated otherwise
+- should we use non-serializable rather than inline? - It means different things: inline means execute in the same worker. non-serializable (and other) implies inline
 - main_thread should probably be implemented as a local worker in the main thread
-- do we need two or more states - main_thread_ waiting, pending, running ? - let's try without since it is a main worker
-- If main_thread will be executed immediately, the state will (probably) never be observed in singlethread server - probably
+- do we need more states - main_thread_ waiting, pending, running ? - let's try without since it is a main worker
+- If main_thread will be executed immediately, the state will (probably) never be observed in singlethread server - probably - but mainthread can cache or store too?
 - local execution/not serializable/volatile (? volatile may be technically shared if serializable) - studied in running modes
 - Should volatile trigger local execution? - volatile is always executed, hence needs to be executed where it is needed
-- is_serializable should be part of the StateType; is_serializable should mean both read and write. E.g. when Matplotlib 
-Fig is write only, it is not serializable.
-- volatile is transitive, local execution and serializable (in general) is not
-- should there be a non-transitive volatile? yes; how about a volatile and transitive_volatile instead?
+- is_serializable should be part of the StateType
+- is_serializable should mean both read and write. E.g. when Matplotlib Fig is write only, it is not serializable - This is too complicated. Serializable means, that the
+default serializer (used by cache) is capable both to read and write.
+- volatile is transitive, local execution and serializable (in general) is not - ok. maybe soft_volatile can be non-transitive?
+- should there be a non-transitive volatile? yes; how about a volatile and transitive_volatile or soft_volatile and volatile instead?
 - main_thread (local_execution) is defined on a command or query level. requires_local_execution(query)
-- main_thread, Local execution is not a good name. inline execution? blocking? - main_thread; inline may or may not be blocking
+- main_thread, Local execution is not a good name. inline execution? blocking? - main_thread or blocking; inline may or may not be blocking
 - Note that inline execution is blocking - only if result is required - this will make a difference between evaluate and submit!
 - There might be a difference between main thread and inline execution. quick volatile => inline, sqlite => main thread; mainthread can't be executed in the worker, inline can
 - Argument: worker ready state in server must be conservatively maintained
 - If job state is not accepted by worker shortly after submitted to worker, action should be taken (houskeeping)
 - How do we identify a crash of a worker? - it would be nice to keep the distinction
-- Crash of a query execution is different than worker crash? - let's go with yes
+- Crash of a query execution is different than worker crash? - let's go with yes - but if worker crash was detected, worker query stould be considered crashed too 
 - Somehow we command should indicate that it will be running for a long time - maybe later when workers would differentiate
 - Worker crash should trigger a worker restart (housekeeping) and maybe a job restart? - yes, but not restarting queries, rather treating them as crashed (housekeeping)
 - We may need a cancel_job methods and messages
 - Cache should support quick return of serialized form
-- MemoryCache supports non-serializable state types, hence there is cachable non-serializable (could be inline)
+- MemoryCache supports non-serializable state types, hence there is cachable non-serializable (could be inline) - this may work in main thread, but is an extra complication
 - Maybe cachable-nonserializable and memory-cache should be treated as a special case (local cache) - hmm... maybe - optional for now - this is an optimization of a cache access
 - workers may need a number to support a redis ZSET, redlock or transaction (https://stackoverflow.com/questions/41273498/how-to-synchronise-multiple-writer-on-redis)
 - Do we need to support futures/promisses? - yes - probably concurrent.futures.Future, since that can be converted to asyncio.futures.Future (https://stackoverflow.com/questions/29902908/what-is-the-difference-between-concurrent-futures-and-asyncio-futures) 
@@ -101,7 +104,7 @@ Cache and store interface?
 - **completed** - succees, failed, canceled or crashed
 - **queued**    - waiting to be executed
 - **running**   - being executed
-- **waiting**   - waiting for a rependency
+- **waiting**   - waiting for a dependency
 - **pending**   - queued, running or waiting - expected to be completed
 
 
@@ -160,14 +163,14 @@ Cache and store interface?
 
 # running modes
 
-|mode      | transitive | command | query   | StateType                   | main thread | worker subquery |
-|----------|------------|---------|---------|-----------                  |-------------|--------|
-|volatile  | yes        | yes     | infered | analogue is is_serializable | allowed     | always |
-|mainthread| no         | yes     | infered | could make sense - proxy?   | enforced    | always delegated to server|
-|inline    | no         | yes     | infered | like volatile               | allowed     | always |
-|normal    | no         | default | infered | default                     | allowed     | allowed |
-
-|designated| maybe       | possibly| special syntax| special proxy         | forbidden   | designated worker |
+|mode           | transitive | command | query                       | StateType                   | main thread | worker subquery |
+|---------------|------------|---------|-----------------------------|-----------                  |-------------|--------|
+|volatile       | yes        | yes     | remaining query is volatile | analogue is is_serializable | allowed     | always |
+|soft_volatile  | no         | yes     | action is volatile          |                             | allowed     | always |
+|mainthread/blocking| no     | yes     | action is blocking          | could make sense - proxy?   | enforced    | always delegated to server|
+|inline         | no         | yes     | action is inline            | like volatile               | allowed     | always  |
+|normal         | no         | default | no impact                   | default                     | allowed     | allowed |
+|designated     | maybe      | possibly| special syntax              | special proxy               | forbidden   | designated worker |
 
 volatile vs inline:
   volatile needs a new execution every time from the point of first volatile command
@@ -183,6 +186,12 @@ Hence we would need only normal, volatile, mainthread and mainthread volatile
 However - inline should be used to communicate that non-serializable type is returned
 
 instead of inline, it should be indicated that the result will not be serializable.
+
+- non_serializable => inline
+- inline => inline
+- blocking => blocking inline (main_thread inline)
+- volatile => inline, not cached? or cached until the server picks it up, then removed?
+- soft_volatile => inline
 
 **Result state type should be indicated in command metadata (optional)**
 **is_serializable should be indicated in command in a conservative way (required?)**
