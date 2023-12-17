@@ -1,4 +1,5 @@
 # Questions
+- should worker messages implement Cache and store interface?
 - do we need the ability to cancel a job? - would be nice from GUI, so yes - it would kill and restart a worker
 - Cache must always be available. Contains must be fast. - ok... a global cache, not just any kind of cache
 - Maybe the global cache should be interfaced via a channel? - maybe as an option, but this would not be optimal e.g. for redis 
@@ -35,67 +36,114 @@ Fig is write only, it is not serializable.
 
 # Messages
 
-Ping               - Server testing worker; it should synchronize the time (optionally if configured)
-Pong               - Worker replies to Ping; it should synchronize the time (optionally if configured)
-WorkerStarting     - Worker sends before it is initialized
-WorkerReady        - Worker innitialized and ready to process jobs
-TerminateWorker    - Server requests worker to terminate (ASAP) - all the jobs get cancelled
-WorkerTerminated   - Worker announcing a smooth exit
-SubmitJob          - server asking worker to process a job
-CancelJob          - server asking worker to cancel a job
-WorkerJobCancelled - worker stating that the job was cancelled
-WorkerAcceptedJob  - worker replies immediately after it got SubmitJob - otherwise another worker will get the request; old request should be ignorred (job reassigned)
-JobReassigned      - server says that it lost the patience and it will ask another worker
-WorkerJobRunning   - worker says that the job is running (job status update?)
-WorkerJobWaiting   - worker says that the job is waiting for a dependency
-WorkerJobPending   - worker says that the job is scheduled but not running
-WorkerJobProgress  - worker communicates the job progress
-WorkerStatus       - General worker status message
-WorkerJobSubquery  - worker announces that it needs to execute a sub-query - as a dependency
-JobPending         - server replies to earlier WorkerJobSubquery - job pending
-JobCompleted       - server replies to earlier WorkerJobSubquery - job completed
-JobReadyInCache    - server replies to earlier WorkerJobSubquery - job ready in cache
-JobFailed          - server replies to earlier WorkerJobSubquery - job failed
-JobCancelled       - server replies to earlier WorkerJobSubquery - job canceled
-JobResult          - server replies to earlier WorkerJobSubquery - job completed, sending the result
-InlineJob          - server replies to earlier WorkerJobSubquery - job result can't be sent or cached, execute locally
-AssignJob          - server replies to earlier WorkerJobSubquery - job assigned to the worker
-CancelJob          - server asks worker to cancel the job
+- **Ping**               - Server testing worker; it should synchronize the time (optionally if configured)
+- **Pong**               - Worker replies to Ping; it should synchronize the time (optionally if configured)
+- **WorkerStarting**     - Worker sends before it is initialized
+- **WorkerReady**        - Worker innitialized and ready to process jobs
+- **TerminateWorker**    - Server requests worker to terminate (ASAP) - all the jobs get cancelled
+- **WorkerTerminated**   - Worker announcing a smooth exit
+- **SubmitJob**          - server asking worker to process a job
+- **CancelJob**          - server asking worker to cancel a job
 
+- **WorkerJobCancelled** - worker stating that the job was cancelled
+- **WorkerAcceptedJob**  - worker replies immediately after it got SubmitJob - otherwise another worker will get the request; old request should be ignorred (job reassigned)
+- **WorkerJobRunning**   - worker says that the job is running (job status update?)
+- **WorkerJobWaiting**   - worker says that the job is waiting for a dependency
+- **WorkerJobPending**   - worker says that the job is scheduled but not running
+- **WorkerJobProgress**  - worker communicates the job progress
+- **WorkerJobStatus**    - cancelled, accepted, running, waiting, pending, completed, 
 
-| Server          | Worker                |
-|-----------------|-----------------------|
-| Ping            | Pong                  |
-| -               | WorkerStarting        |
-| -               | WorkerReady           |
-| SubmitJob       | WorkerJobSubquery     |
-| AssignJob       | -                     |
-| -               | WorkerAcceptedJob     |
-| JobPending      | WorkerJobPending      |
-|                 | WorkerJobWaiting      |
-|                 | WorkerJobRunning      |
-| -               | WorkerJobProgress     |
-| KillJob         | -                     |
-| JobReadyInCache | WorkerJobReadyInCache |
-| JobResult       | WorkerJobResult       |
-| JobFailed       | WorkerJobFailed       |
-| InlineJob       | WorkerInlineJob       |
+- **JobReassigned**      - server says that it lost the patience and it will ask another worker
+
+- **WorkerStatus**       - General worker status message
+- **WorkerJobSubquery**  - worker announces that it needs to execute a sub-query - as a dependency
+
+- **JobPending**         - server replies to earlier WorkerJobSubquery - job pending
+- **JobCompleted**       - server replies to earlier WorkerJobSubquery - job completed
+- **JobReadyInCache**    - server replies to earlier WorkerJobSubquery - job ready in cache
+- **JobFailed**          - server replies to earlier WorkerJobSubquery - job failed
+- **JobCancelled**       - server replies to earlier WorkerJobSubquery - job canceled
+- **JobResult**          - server replies to earlier WorkerJobSubquery - job completed, sending the result
+- **InlineJob**          - server replies to earlier WorkerJobSubquery - job result can't be sent or cached, execute locally
+- **AssignJob**          - server replies to earlier WorkerJobSubquery - job assigned to the worker
+- **CancelJob**          - server asks worker to cancel the job
+
+Cache and store interface?
+
+| Server                 | Worker                 |
+|------------------------|------------------------|
+| Ping                   | Pong                   |
+| -                      | WorkerStarting         |
+| -                      | WorkerReady            |
+| TerminateWorker        | WorkerTerminated       |
+|                        | WorkerStatus           |
+| SubmitJob              | WorkerJobSubquery      |
+| AssignJob              | -                      |
+| -                      | WorkerAcceptedJob      |
+| JobStatus Pending      | WorkerJob Pending      |
+|                        | WorkerJob Waiting      |
+|                        | WorkerJob Running      |
+| -                      | WorkerJobProgress      |
+| CancelJob              | WorkerJob Canceled     |
+| JobStatus ReadyInCache | WorkerJob ReadyInCache |
+| JobStatusResult        | WorkerJobResult        |
+| JobStatus Failed       | WorkerJob Failed       |
+| JobStatus Inline       | WorkerJob Inline       |
 
 # Job nomenclature
-succeed   - finished successfully producing a result
-failed    - finished with an error
-crashed   - crashed in an environment rather than in the job execution - i.e. a bug or runtime error; recorded as a separate state, but treated as failed
-cancelled - finished by request - treated as failed
-finished  - don't use
-done      - don't use
-completed - succees, failed, canceled or crashed
-queued    - waiting to be executed
-running   - being executed
-waiting   - waiting for a rependency
-pending   - queued, running or waiting - expected to be completed
+
+- **succeed**   - finished successfully producing a result
+- **failed**    - finished with an error
+- **crashed**   - crashed in an environment rather than in the job execution - i.e. a bug or runtime error; recorded as a separate state, but treated as failed
+- **cancelled** - finished by request - treated as failed
+- **finished**  - don't use
+- **done**      - don't use
+- **completed** - succees, failed, canceled or crashed
+- **queued**    - waiting to be executed
+- **running**   - being executed
+- **waiting**   - waiting for a rependency
+- **pending**   - queued, running or waiting - expected to be completed
 
 
-**do we need the ability to cancel a job?**
+- completed - is_completed
+  - suceed  - is_success
+    - cached (cache key/query) is_ready
+    - result (result)
+    - result in metadata ?
+  - expired - succeed, but expired - is_ready=false
+  - error   - is_error
+    - plan error (message)
+    - failed (command traceback)
+    - crashed (traceback)
+    - canceled (reason)
+- pending   - is_pending
+  - queued  - is_queued
+    - queued (queue position?)
+    - assigned (worker name)
+  - waiting
+    - waiting for parent (parent query/key)
+    - waiting for dependency (dependency query/key)
+      - waiting for query dependency
+      - waiting for resource
+  - running
+    - running in worker (worker name)
+    - running inline? in line where? on server? locally? 
+  - streaming ? (pushing results) - the same as running, but intermediate result is available
+    - intermediate_cached ? (cache key/query with intermediate id)
+    - intermediate_result ?
+    - intermediate_result_in_metadata ?
+  - iterating ? (results are pulled)
+    - intermediate_cached ? (cache key/query with intermediate id)
+    - intermediate_result ?
+    - intermediate_result_in_metadata ?
+- recipe - exists a recipe
+- plan - has an execution plan
+- cancel requested
+- inline requested
+
+
+
+**do we need the ability to cancel a job?** - yes
 
 # submit query
 
@@ -144,23 +192,25 @@ instead of inline, it should be indicated that the result will not be serializab
 - unknown
 - new - not in queue
 - main_thread - being assigned and executed in the main thread
-**This should probably be implemented as a local worker in the main thread**
-**do we need two or more states - main_thread_ waiting, pending, running ?**
-**If main_thread will be executed immediately, the state will (probably) never be observed in singlethread server** 
-**local execution/not serializable/volatile (? volatile may be technically shared if serializable)**
-**Should volatile trigger local execution?**
-**is_serializable should be part of the StateType** is_serializable should mean both read and write. E.g. when Matplotlib Fig is write only, it is not serializable.
-**volatile is transitive, local execution and serializable (in general) is not**
-**local_execution is defined on a command or query level. requires_local_execution(query)**
-**Local execution is not a good name. inline execution? blocking?**
-**Note that inline execution is blocking**
-**There might be a difference between main thread and inline execution. quick volatile => inline, sqlite => main thread; mainthread can't be executed in the worker, inline can**
+
+- **This should probably be implemented as a local worker in the main thread**
+- **do we need two or more states - main_thread_ waiting, pending, running ?**
+- **If main_thread will be executed immediately, the state will (probably) never be observed in singlethread server** 
+- **local execution/not serializable/volatile (? volatile may be technically shared if serializable)**
+- **Should volatile trigger local execution?**
+- **is_serializable should be part of the StateType** is_serializable should mean both read and write. E.g. when Matplotlib Fig is write only, it is not serializable.
+- **volatile is transitive, local execution and serializable (in general) is not**
+- **local_execution is defined on a command or query level. requires_local_execution(query)**
+- **Local execution is not a good name. inline execution? blocking?**
+- **Note that inline execution is blocking**
+- **There might be a difference between main thread and inline execution. quick volatile => inline, sqlite => main thread; mainthread can't be executed in the worker, - inline can**
+
 - queued
 - submitted - submitted to worker, but not accepted yet; should be accepted shortly after submission
 - _rejected by worker_ (can't be)
-**Argument: worker ready state in server must be conservatively maintained**
-**If job state is not accepted by worker shortly after submitted to worker, action should be taken**
-**housekeeping**
+- **Argument: worker ready state in server must be conservatively maintained**
+- **If job state is not accepted by worker shortly after submitted to worker, action should be taken**
+- **housekeeping**
   * check if workers are running by regular pings
   * kill and restart faulty workers*
   * check if jobs submitted to worker are accepted by worker
@@ -176,11 +226,12 @@ instead of inline, it should be indicated that the result will not be serializab
 - completed - succees, failed, canceled or crashed
 - waiting   - waiting for a rependency
 - pending   - queued, running or waiting - expected to be completed
-**How do we identify a crash of a worker?**
-**Somehow we command should indicate that it will be running for a long time**
-**Crash of a query execution is different than worker crash?**
-**Worker crash should trigger a worker restart (housekeeping) and maybe a job restart?**
-**We may need a cancel_job methods and messages**
+
+- **How do we identify a crash of a worker?**
+- **Somehow we command should indicate that it will be running for a long time**
+- **Crash of a query execution is different than worker crash?**
+- **Worker crash should trigger a worker restart (housekeeping) and maybe a job restart?**
+- **We may need a cancel_job methods and messages**
 
 # query submission (top level)
 
@@ -196,9 +247,9 @@ instead of inline, it should be indicated that the result will not be serializab
 
 - Server: is_finished (completed or failed) ? => return
   Job: completed or failed
-**Do we need to support futures/promisses?**
-**Do we need a future? Do we need to support multiple forms?**
-**We are going to have a server future and worker future. Possibly a server thread future.**
+- **Do we need to support futures/promisses?**
+- **Do we need a future? Do we need to support multiple forms?**
+- **We are going to have a server future and worker future. Possibly a server thread future.**
 
 - Server: is_pending (queued, assigned, accepted, running)
   Job: queued, assigned, accepted, running
