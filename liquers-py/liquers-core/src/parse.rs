@@ -1,5 +1,3 @@
-use std::ops::Not;
-
 use nom;
 
 extern crate nom_locate;

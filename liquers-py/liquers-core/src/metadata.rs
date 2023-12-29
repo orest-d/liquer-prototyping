@@ -1,4 +1,4 @@
-use serde_json::{self, Value};
+use serde_json::{self};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {

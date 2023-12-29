@@ -1,41 +1,11 @@
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use thiserror::Error;
 
-use crate::metadata::{self, Metadata, MetadataRecord};
+use crate::metadata::{Metadata, MetadataRecord};
 use crate::query::Key;
 
-/*
-#[derive(Debug, Clone)]
-pub struct Key(String);
-impl Key {
-    pub fn new<S: AsRef<str>>(s: S) -> Self {
-        Self(s.as_ref().to_string())
-    }
-    pub fn has_prefix<S: AsRef<str>>(&self, prefix: S) -> bool {
-        self.0.starts_with(prefix.as_ref())
-    }
-    pub fn join<S: AsRef<str>>(&self, name: S) -> Self {
-        Self(format!("{}/{}", self.0, name.as_ref()))
-    }
-}
-
-impl Display for Key {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl TryFrom<String> for Key {
-    type Error = StoreError;
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        Ok(Key(s))
-    }
-}
-*/
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -56,13 +26,8 @@ pub trait Store {
     }
 
     /// Key prefix common to all keys in this store.
-    // TODO: Use only root_key
-    fn key_prefix(&self) -> &str {
-        ""
-    }
-
-    fn root_key(&self) -> Key {
-        self.key_prefix().try_into().unwrap()
+    fn key_prefix(&self) -> Key {
+        Key::new()
     }
 
     /// Create default metadata object for a given key
@@ -154,8 +119,8 @@ pub trait Store {
 
     /// List or iterator of all keys
     fn keys(&self) -> Result<Vec<Key>, StoreError> {
-        let mut keys = self.listdir_keys_deep(&self.root_key())?;
-        keys.push(self.root_key().to_owned());
+        let mut keys = self.listdir_keys_deep(&self.key_prefix())?;
+        keys.push(self.key_prefix().to_owned());
         Ok(keys)
     }
 
@@ -258,12 +223,12 @@ pub trait Store {
 #[derive(Debug, Clone)]
 pub struct FileStore {
     pub path: PathBuf,
-    pub prefix: String,
+    pub prefix: Key,
 }
 
 impl FileStore {
-    const METADATA: &str = ".__metadata__";
-    pub fn new(path: &str, prefix: &str) -> FileStore {
+    const METADATA: &'static str = ".__metadata__";
+    pub fn new(path: &str, prefix: &Key) -> FileStore {
         FileStore {
             path: PathBuf::from(path),
             prefix: prefix.to_owned(),
@@ -292,8 +257,8 @@ impl Store for FileStore {
         )
     }
 
-    fn key_prefix(&self) -> &str {
-        &self.prefix
+    fn key_prefix(&self) -> Key {
+        self.prefix.to_owned()
     }
 
     fn default_metadata(&self, key: &Key, is_dir: bool) -> MetadataRecord {
@@ -453,7 +418,7 @@ impl Store for FileStore {
     }
 
     fn is_supported(&self, key: &Key) -> bool {
-        key.has_prefix(&self.prefix)
+        key.has_key_prefix(&self.prefix)
     }
 }
 
@@ -466,14 +431,6 @@ mod tests {
     use std::convert::TryFrom;
 
     #[test]
-    fn test_key() {
-        let k:Key = "test".try_into().unwrap();
-        assert_eq!(k.encode(), "test");
-        assert_eq!(k.has_prefix("t"), true);
-        assert_eq!(k.has_prefix("x"), false);
-        assert_eq!(k.has_prefix("test"), true);
-        assert_eq!(k.has_prefix("testx"), false);
-        assert_eq!(k.has_prefix("testx"), false);
-        assert_eq!(k.has_prefix(""), true);
+    fn test() {
     }
 }

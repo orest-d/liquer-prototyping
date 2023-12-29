@@ -3,8 +3,6 @@ use std::fmt::Display;
 use std::hash::Hash;
 use std::ops::{Add, Index, IndexMut};
 
-use crate::error::Error;
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
     pub offset: usize,
@@ -523,9 +521,24 @@ impl Key {
         self.0.iter().map(|x| x.encode()).join("/")
     }
 
-    /// Check if the key has a given string prefix.
+    /*
+    // Check if the key has a given string prefix.
     pub fn has_prefix<S: AsRef<str>>(&self, prefix: S) -> bool {
         self.encode().starts_with(prefix.as_ref())
+    }
+    */
+
+    /// Check if the key has a given key prefix.
+    pub fn has_key_prefix(&self, key_prefix: &Key) -> bool {
+        if self.len() < key_prefix.len() {
+            return false;
+        }
+        for i in 0..key_prefix.len() {
+            if self[i].name != key_prefix[i].name {
+                return false;
+            }
+        }
+        true
     }
 
     /// Append a name as a new element at the end of the key
@@ -1168,6 +1181,16 @@ mod tests {
     use crate::parse::parse_key;
 
     use super::*;
+
+    #[test]
+    fn test_has_key_prefix() -> Result<(), Box<dyn std::error::Error>> {
+        let key = parse_key("a/b/c").unwrap();
+        assert!(key.has_key_prefix(&Key::new()));
+        assert!(key.has_key_prefix(&parse_key("a").unwrap()));
+        assert!(key.has_key_prefix(&parse_key("a/b").unwrap()));
+        assert!(!key.has_key_prefix(&parse_key("a/c").unwrap()));
+        Ok(())
+    }
 
     #[test]
     fn encode_link_action_parameter() -> Result<(), Box<dyn std::error::Error>> {
