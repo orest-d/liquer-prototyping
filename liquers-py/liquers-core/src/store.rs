@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
 
 use crate::metadata::{Metadata, MetadataRecord};
@@ -31,7 +31,7 @@ pub trait Store {
     }
 
     /// Create default metadata object for a given key
-    fn default_metadata(&self, key: &Key, is_dir: bool) -> MetadataRecord {
+    fn default_metadata(&self, _key: &Key,_is_dir: bool) -> MetadataRecord {
         MetadataRecord::new()
     }
 
@@ -40,9 +40,9 @@ pub trait Store {
     fn finalize_metadata(
         &self,
         metadata: Metadata,
-        key: &Key,
-        data: &[u8],
-        update: bool,
+        _key: &Key,
+        _data: &[u8],
+        _update: bool,
     ) -> Metadata {
         metadata
     }
@@ -51,9 +51,9 @@ pub trait Store {
     fn finalize_metadata_empty(
         &self,
         metadata: Metadata,
-        key: &Key,
-        is_dir: bool,
-        update: bool,
+        _key: &Key,
+        _is_dir: bool,
+        _update: bool,
     ) -> Metadata {
         metadata
     }
@@ -74,7 +74,7 @@ pub trait Store {
     }
 
     /// Store data and metadata.
-    fn set(&mut self, key: &Key, data: &[u8], metadata: &Metadata) -> Result<(), StoreError> {
+    fn set(&mut self, key: &Key, _data: &[u8], _metadata: &Metadata) -> Result<(), StoreError> {
         Err(StoreError::KeyNotSupported(
             key.to_owned(),
             self.store_name(),
@@ -82,7 +82,7 @@ pub trait Store {
     }
 
     /// Store metadata only
-    fn set_metadata(&mut self, key: &Key, metadata: &Metadata) -> Result<(), StoreError> {
+    fn set_metadata(&mut self, key: &Key, _metadata: &Metadata) -> Result<(), StoreError> {
         Err(StoreError::KeyNotSupported(
             key.to_owned(),
             self.store_name(),
@@ -108,12 +108,12 @@ pub trait Store {
     }
 
     /// Returns true if store contains the key.
-    fn contains(&self, key: &Key) -> bool {
+    fn contains(&self, _key: &Key) -> bool {
         false
     }
 
     /// Returns true if key points to a directory.
-    fn is_dir(&self, key: &Key) -> bool {
+    fn is_dir(&self, _key: &Key) -> bool {
         false
     }
 
@@ -127,7 +127,7 @@ pub trait Store {
     /// Return names inside a directory specified by key.
     /// To get a key, names need to be joined with the key (key/name).
     /// Complete keys can be obtained with the listdir_keys method.
-    fn listdir(&self, key: &Key) -> Result<Vec<String>, StoreError> {
+    fn listdir(&self, _key: &Key) -> Result<Vec<String>, StoreError> {
         Ok(vec![])
     }
 
@@ -173,7 +173,7 @@ pub trait Store {
     /// Returns true when this store supports the supplied key.
     /// This allows layering Stores, e.g. by with_overlay, with_fallback
     /// and store selectively certain data (keys) in certain stores.
-    fn is_supported(&self, key: &Key) -> bool {
+    fn is_supported(&self, _key: &Key) -> bool {
         false
     }
 
@@ -261,16 +261,16 @@ impl Store for FileStore {
         self.prefix.to_owned()
     }
 
-    fn default_metadata(&self, key: &Key, is_dir: bool) -> MetadataRecord {
+    fn default_metadata(&self, _key: &Key, _is_dir: bool) -> MetadataRecord {
         MetadataRecord::new()
     }
 
     fn finalize_metadata(
         &self,
         metadata: Metadata,
-        key: &Key,
-        data: &[u8],
-        update: bool,
+        _key: &Key,
+        _data: &[u8],
+        _update: bool,
     ) -> Metadata {
         metadata
     }
@@ -278,9 +278,9 @@ impl Store for FileStore {
     fn finalize_metadata_empty(
         &self,
         metadata: Metadata,
-        key: &Key,
-        is_dir: bool,
-        update: bool,
+        _key: &Key,
+        _is_dir: bool,
+        _update: bool,
     ) -> Metadata {
         metadata
     }
@@ -425,10 +425,9 @@ impl Store for FileStore {
 // Unittests
 #[cfg(test)]
 mod tests {
-    use crate::query::Key;
+//    use crate::query::Key;
 
-    use super::*;
-    use std::convert::TryFrom;
+//    use super::*;
 
     #[test]
     fn test() {
