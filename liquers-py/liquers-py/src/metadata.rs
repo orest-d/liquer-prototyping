@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 
 #[pyclass]
-pub struct Metadata(liquers_core::metadata::Metadata);
+pub struct Metadata(pub liquers_core::metadata::Metadata);
 
 #[pymethods]
 impl Metadata {

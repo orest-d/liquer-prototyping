@@ -24,4 +24,45 @@ impl Store {
         crate::parse::Key(self.0.key_prefix().to_owned())
     }
 
+    /// Get data and metadata
+    fn get(&self, key: &crate::parse::Key) -> PyResult<(Vec<u8>, crate::metadata::Metadata)> {
+        match self.0.get(&key.0) {
+            Ok((data, metadata)) => Ok((data, crate::metadata::Metadata(metadata))),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())),
+        }
+    }
+
+    /// Get data as bytes
+    fn get_bytes(&self, key: &crate::parse::Key) -> PyResult<Vec<u8>> {
+        match self.0.get_bytes(&key.0) {
+            Ok(data) => Ok(data),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())),
+        }
+    }
+
+    /// Get metadata
+    fn get_metadata(&self, key: &crate::parse::Key) -> PyResult<crate::metadata::Metadata> {
+        match self.0.get_metadata(&key.0) {
+            Ok(metadata) => Ok(crate::metadata::Metadata(metadata)),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())),
+        }
+    }
+
+    /// Store data and metadata.
+    fn set(&mut self, key: &crate::parse::Key, data: &[u8], metadata: &crate::metadata::Metadata) -> PyResult<()> {
+        match self.0.set(&key.0, data, &metadata.0) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())),
+        }
+    }
+
+    /// Store metadata.
+    fn set_metadata(&mut self, key: &crate::parse::Key, metadata: &crate::metadata::Metadata) -> PyResult<()> {
+        match self.0.set_metadata(&key.0, &metadata.0) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())),
+        }
+    }
+
+
 }
