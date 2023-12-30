@@ -18,4 +18,10 @@ impl Store {
     pub fn store_name(&self) -> String {
         self.0.store_name()
     }
+
+    /// Key prefix common to all keys in this store.
+    pub fn key_prefix(&self) -> crate::parse::Key {
+        crate::parse::Key(self.0.key_prefix().to_owned())
+    }
+
 }

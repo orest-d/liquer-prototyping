@@ -37,7 +37,7 @@ pub struct MetadataRecord {
     pub type_identifier: String,
     pub message: String,
     pub is_error: bool,
-    pub mimetype: String,
+    pub media_type: String,
 }
 
 impl MetadataRecord {
@@ -69,16 +69,57 @@ impl Metadata{
    pub fn new() -> Metadata{
        Metadata::MetadataRecord(MetadataRecord::new())
    }
-   pub fn get_mimetype(&self) -> String{
+
+   pub fn from_json(json: &str) -> serde_json::Result<Metadata>{
+       match serde_json::from_str::<MetadataRecord>(json){
+           Ok(m) => Ok(Metadata::MetadataRecord(m)),
+           Err(_) => {
+               match serde_json::from_str::<serde_json::Value>(json){
+                   Ok(v) => Ok(Metadata::LegacyMetadata(v)),
+                   Err(e) => Err(e),
+               }
+           }
+       }
+   }
+
+   pub fn from_json_value(json: serde_json::Value) -> serde_json::Result<Metadata>{
+       match serde_json::from_value::<MetadataRecord>(json.clone()){
+           Ok(m) => Ok(Metadata::MetadataRecord(m)),
+           Err(_) => {
+               match serde_json::from_value::<serde_json::Value>(json){
+                   Ok(v) => Ok(Metadata::LegacyMetadata(v)),
+                   Err(e) => Err(e),
+               }
+           }
+       }
+   }
+
+   pub fn to_json(&self) -> serde_json::Result<String>{
+       match self{
+           Metadata::LegacyMetadata(v) => serde_json::to_string(v),
+           Metadata::MetadataRecord(m) => serde_json::to_string(m),
+       }
+   }
+
+   pub fn get_media_type(&self) -> String{
        match self{
            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
                 if let Some(mimetype) = o.get("mimetype"){
                      return mimetype.to_string();
                 }
-                return "application/octet-stream".to_string();
+                if let Some(media_type) = o.get("media_type"){
+                    return media_type.to_string();
+                }
+               return "application/octet-stream".to_string();
            },
-           Metadata::MetadataRecord(m) => m.mimetype.to_string(),
+           Metadata::MetadataRecord(m) => m.media_type.to_string(),
               _ => "application/octet-stream".to_string(),
        }
    } 
 }
+
+impl From<MetadataRecord> for Metadata{
+    fn from(m: MetadataRecord) -> Self{
+        Metadata::MetadataRecord(m)
+    }
+}   

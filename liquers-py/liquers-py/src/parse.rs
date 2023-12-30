@@ -272,7 +272,7 @@ impl TransformQuerySegment {
 }
 
 #[pyclass]
-pub struct Key(liquers_core::query::Key);
+pub struct Key(pub liquers_core::query::Key);
 
 #[pymethods]
 impl Key {
