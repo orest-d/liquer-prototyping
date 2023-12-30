@@ -1,4 +1,7 @@
-use serde_json::{self};
+use serde_json::{self, Value};
+
+use crate::parse;
+use crate::query::Query;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {
@@ -14,8 +17,6 @@ pub enum Status {
     External,
     SideEffect,
 }
-
-type Query = String;
 
 impl Default for Status {
     fn default() -> Self {
@@ -54,72 +55,82 @@ impl MetadataRecord {
         Ok(metadata)
     }
     */
-
-    pub fn cache_key(&self) -> String {
-        self.query.to_owned()
-    }
 }
 
-pub enum Metadata{
+#[derive(Debug, Clone)]
+pub enum Metadata {
     LegacyMetadata(serde_json::Value),
     MetadataRecord(MetadataRecord),
 }
 
-impl Metadata{
-   pub fn new() -> Metadata{
-       Metadata::MetadataRecord(MetadataRecord::new())
-   }
+impl Metadata {
+    pub fn new() -> Metadata {
+        Metadata::MetadataRecord(MetadataRecord::new())
+    }
 
-   pub fn from_json(json: &str) -> serde_json::Result<Metadata>{
-       match serde_json::from_str::<MetadataRecord>(json){
-           Ok(m) => Ok(Metadata::MetadataRecord(m)),
-           Err(_) => {
-               match serde_json::from_str::<serde_json::Value>(json){
-                   Ok(v) => Ok(Metadata::LegacyMetadata(v)),
-                   Err(e) => Err(e),
-               }
-           }
-       }
-   }
+    pub fn from_json(json: &str) -> serde_json::Result<Metadata> {
+        match serde_json::from_str::<MetadataRecord>(json) {
+            Ok(m) => Ok(Metadata::MetadataRecord(m)),
+            Err(_) => match serde_json::from_str::<serde_json::Value>(json) {
+                Ok(v) => Ok(Metadata::LegacyMetadata(v)),
+                Err(e) => Err(e),
+            },
+        }
+    }
 
-   pub fn from_json_value(json: serde_json::Value) -> serde_json::Result<Metadata>{
-       match serde_json::from_value::<MetadataRecord>(json.clone()){
-           Ok(m) => Ok(Metadata::MetadataRecord(m)),
-           Err(_) => {
-               match serde_json::from_value::<serde_json::Value>(json){
-                   Ok(v) => Ok(Metadata::LegacyMetadata(v)),
-                   Err(e) => Err(e),
-               }
-           }
-       }
-   }
+    pub fn from_json_value(json: serde_json::Value) -> serde_json::Result<Metadata> {
+        match serde_json::from_value::<MetadataRecord>(json.clone()) {
+            Ok(m) => Ok(Metadata::MetadataRecord(m)),
+            Err(_) => match serde_json::from_value::<serde_json::Value>(json) {
+                Ok(v) => Ok(Metadata::LegacyMetadata(v)),
+                Err(e) => Err(e),
+            },
+        }
+    }
 
-   pub fn to_json(&self) -> serde_json::Result<String>{
-       match self{
-           Metadata::LegacyMetadata(v) => serde_json::to_string(v),
-           Metadata::MetadataRecord(m) => serde_json::to_string(m),
-       }
-   }
+    pub fn to_json(&self) -> serde_json::Result<String> {
+        match self {
+            Metadata::LegacyMetadata(v) => serde_json::to_string(v),
+            Metadata::MetadataRecord(m) => serde_json::to_string(m),
+        }
+    }
 
-   pub fn get_media_type(&self) -> String{
-       match self{
-           Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
-                if let Some(mimetype) = o.get("mimetype"){
-                     return mimetype.to_string();
+    pub fn get_media_type(&self) -> String {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                if let Some(mimetype) = o.get("mimetype") {
+                    return mimetype.to_string();
                 }
-                if let Some(media_type) = o.get("media_type"){
+                if let Some(media_type) = o.get("media_type") {
                     return media_type.to_string();
                 }
-               return "application/octet-stream".to_string();
-           },
-           Metadata::MetadataRecord(m) => m.media_type.to_string(),
-              _ => "application/octet-stream".to_string(),
-       }
-   } 
+                return "application/octet-stream".to_string();
+            }
+            Metadata::MetadataRecord(m) => m.media_type.to_string(),
+            _ => "application/octet-stream".to_string(),
+        }
+    }
+
+    pub fn query(&self) -> Result<Query, crate::error::Error> {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                if let Some(Value::String(query)) = o.get("query") {
+                    return parse::parse_query(query);
+                }
+                return Err(crate::error::Error::General {
+                    message: "Query not found".to_string(),
+                });
+            }
+            Metadata::MetadataRecord(m) => Ok(m.query.to_owned()),
+            _ => Err(crate::error::Error::General {
+                message: "Query not found in unsupported legacy metadata".to_string(),
+            }),
+        }
+    }
 }
 
-impl From<MetadataRecord> for Metadata{
-    fn from(m: MetadataRecord) -> Self{
+impl From<MetadataRecord> for Metadata {
+    fn from(m: MetadataRecord) -> Self {
         Metadata::MetadataRecord(m)
     }
-}   
+}
