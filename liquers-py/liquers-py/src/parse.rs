@@ -1,3 +1,5 @@
+use std::{collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
+
 use pyo3::prelude::*;
 
 
@@ -309,6 +311,20 @@ impl Key {
         self.0.encode()
     }
 
+    pub fn __eq__(&self, other: &Key) -> bool {
+        self.0 == other.0
+    }
+
+    pub fn __ne__(&self, other: &Key) -> bool {
+        self.0 != other.0
+    }
+
+    pub fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.0.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Return the last element of the key if present, None otherwise.
     /// This is typically interpreted as a filename in a Store object.
     pub fn filename(&self) -> Option<String> {
@@ -369,6 +385,21 @@ impl ResourceQuerySegment {
     pub fn __str__(&self) -> String {
         self.0.encode()
     }
+
+    pub fn __eq__(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+
+    pub fn __ne__(&self, other: &Self) -> bool {
+        self.0 != other.0
+    }
+
+    pub fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.0.hash(&mut hasher);
+        hasher.finish()
+    }
+
 }
 
 #[pyclass]
@@ -432,6 +463,20 @@ impl QuerySegment {
 
     pub fn __str__(&self) -> String {
         self.0.encode()
+    }
+
+    pub fn __eq__(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+
+    pub fn __ne__(&self, other: &Self) -> bool {
+        self.0 != other.0
+    }
+
+    pub fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.0.hash(&mut hasher);
+        hasher.finish()
     }
 }
 
@@ -536,6 +581,21 @@ impl Query {
     pub fn __str__(&self) -> String {
         self.0.encode()
     }
+
+    pub fn __eq__(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+
+    pub fn __ne__(&self, other: &Self) -> bool {
+        self.0 != other.0
+    }
+
+    pub fn __hash__(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.0.hash(&mut hasher);
+        hasher.finish()
+    }
+
 }
 
 #[pyfunction]

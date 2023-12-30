@@ -114,6 +114,27 @@ impl Display for ActionParameter {
     }
 }
 
+impl PartialEq for ActionParameter {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::String(s1, _), Self::String(s2, _)) => s1 == s2,
+            (Self::Link(q1, _), Self::Link(q2, _)) => q1.encode() == q2.encode(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ActionParameter {}
+
+impl Hash for ActionParameter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::String(s, _) => s.hash(state),
+            Self::Link(_, _) => self.encode().hash(state),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResourceName {
     pub name: String,
@@ -138,7 +159,7 @@ impl ResourceName {
     }
 
     /// Clear the position of the resource name
-    pub fn clean_position(&mut self){
+    pub fn clean_position(&mut self) {
         self.position = Position::unknown();
     }
 
@@ -151,7 +172,7 @@ impl ResourceName {
     pub fn is_parent(&self) -> bool {
         self.name == ".."
     }
-    
+
     /// Encode resource name as a string
     pub fn encode(&self) -> &str {
         &self.name
@@ -171,7 +192,9 @@ impl PartialEq for ResourceName {
         self.name == other.name
     }
 }
+
 impl Eq for ResourceName {}
+
 impl Hash for ResourceName {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
@@ -240,6 +263,21 @@ impl Display for ActionRequest {
     }
 }
 
+impl PartialEq for ActionRequest {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.parameters == other.parameters
+    }
+}
+
+impl Eq for ActionRequest {}
+
+impl Hash for ActionRequest {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.parameters.hash(state);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct HeaderParameter {
     pub value: String,
@@ -268,6 +306,20 @@ impl HeaderParameter {
 impl Display for HeaderParameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+impl PartialEq for HeaderParameter {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl Eq for HeaderParameter {}
+
+impl Hash for HeaderParameter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
     }
 }
 
@@ -329,6 +381,26 @@ impl SegmentHeader {
 impl Display for SegmentHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.encode())
+    }
+}
+
+impl PartialEq for SegmentHeader {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.level == other.level
+            && self.parameters == other.parameters
+            && self.resource == other.resource
+    }    
+}
+
+impl Eq for SegmentHeader {}
+
+impl Hash for SegmentHeader {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.level.hash(state);
+        self.parameters.hash(state);
+        self.resource.hash(state);
     }
 }
 
@@ -475,6 +547,24 @@ impl Display for TransformQuerySegment {
     }
 }
 
+impl PartialEq for TransformQuerySegment {
+    fn eq(&self, other: &Self) -> bool {
+        self.header == other.header
+            && self.query == other.query
+            && self.filename == other.filename
+    }
+}
+
+impl Eq for TransformQuerySegment {}
+
+impl Hash for TransformQuerySegment {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.header.hash(state);
+        self.query.hash(state);
+        self.filename.hash(state);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Key(pub Vec<ResourceName>);
 impl Key {
@@ -558,21 +648,21 @@ impl Key {
             key.push(x.clone());
         }
         Key(key)
-    }   
+    }
 
     /// Convert a key to an absolute key - i.e. interpret "." and ".." elements.
     /// The cwd_key is a "current working directory" key - i.e. a key to which "." and ".." elements are relative to.
     /// Note that the cwd_key should be absolute, i.e. it should not contain any "." or ".." elements.
     /// This is not checked by the function.
-    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+    pub fn to_absolute(&self, cwd_key: &Key) -> Self {
         let mut result = Vec::new();
         let mut use_cwd = true;
         for x in self.iter() {
             if !result.is_empty() {
                 use_cwd = false;
             }
-            if x.is_cwd() {                
-                if use_cwd{
+            if x.is_cwd() {
+                if use_cwd {
                     for y in cwd_key.iter() {
                         result.push(y.clone());
                     }
@@ -630,7 +720,6 @@ pub struct ResourceQuerySegment {
 
 #[allow(dead_code)]
 impl ResourceQuerySegment {
-
     /// Create a new empty resource query segment
     pub fn new() -> ResourceQuerySegment {
         ResourceQuerySegment {
@@ -712,18 +801,32 @@ impl ResourceQuerySegment {
     /// This happens regardless the resource name or other header parameters.
     /// Note that the cwd_key should be absolute, i.e. it should not contain any "." or ".." elements.
     /// This is not checked by the function.
-    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+    pub fn to_absolute(&self, cwd_key: &Key) -> Self {
         Self {
             header: self.header.clone(),
             key: self.key.to_absolute(cwd_key),
         }
     }
-
 }
 
 impl Display for ResourceQuerySegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.encode())
+    }
+}
+
+impl PartialEq for ResourceQuerySegment {
+    fn eq(&self, other: &Self) -> bool {
+        self.header == other.header && self.key == other.key
+    }
+}
+
+impl Eq for ResourceQuerySegment {}
+
+impl Hash for ResourceQuerySegment {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.header.hash(state);
+        self.key.hash(state);
     }
 }
 
@@ -761,7 +864,7 @@ impl QuerySegment {
 
     /// Convert a query segment to an absolute query segment - i.e. interpret "." and ".." elements.
     /// See ResourceQuerySegment::to_absolute for details.
-    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+    pub fn to_absolute(&self, cwd_key: &Key) -> Self {
         match self {
             QuerySegment::Resource(rqs) => QuerySegment::Resource(rqs.to_absolute(cwd_key)),
             QuerySegment::Transform(_) => self.clone(),
@@ -830,7 +933,7 @@ impl QuerySegment {
             QuerySegment::Transform(_) => true,
         }
     }
-    /* 
+    /*
     pub fn resource(&self) -> Option<ResourceQuerySegment> {
         match self {
             QuerySegment::Resource(rqs) => Some(rqs.to_owned()),
@@ -876,9 +979,30 @@ impl Display for QuerySegment {
     }
 }
 
+impl PartialEq for QuerySegment {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (QuerySegment::Resource(r1), QuerySegment::Resource(r2)) => r1 == r2,
+            (QuerySegment::Transform(t1), QuerySegment::Transform(t2)) => t1 == t2,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for QuerySegment {}
+
+impl Hash for QuerySegment {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            QuerySegment::Resource(rqs) => rqs.hash(state),
+            QuerySegment::Transform(tqs) => tqs.hash(state),
+        }
+    }
+}
+
 /// Query is a sequence of query segments.
 /// Typically this will be a resource and and/or a transformation applied to a resource.
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Query {
     pub segments: Vec<QuerySegment>,
     pub absolute: bool,
@@ -923,9 +1047,13 @@ impl Query {
 
     /// Convert a query to an absolute query - i.e. interpret "." and ".." elements.
     /// See ResourceQuerySegment::to_absolute for details.
-    pub fn to_absolute(&self, cwd_key:&Key) -> Self {
+    pub fn to_absolute(&self, cwd_key: &Key) -> Self {
         Self {
-            segments: self.segments.iter().map(|x| x.to_absolute(cwd_key)).collect(),
+            segments: self
+                .segments
+                .iter()
+                .map(|x| x.to_absolute(cwd_key))
+                .collect(),
             absolute: self.absolute,
         }
     }
@@ -1060,7 +1188,7 @@ impl Query {
                 (None, Some(r)) => Some(r),
                 (Some(x), None) => Some(x.clone()),
                 (Some(QuerySegment::Transform(x)), Some(QuerySegment::Transform(r))) => {
-                    Some(QuerySegment::Transform(r+x.clone()))
+                    Some(QuerySegment::Transform(r + x.clone()))
                 }
                 _ => None,
             };
@@ -1078,30 +1206,29 @@ impl Query {
             qp: &Option<Query>,
             qr: &Option<QuerySegment>,
         ) {
-            match (qp,qr){
+            match (qp, qr) {
                 (Some(qp), Some(qr)) => {
-                    if (!qp.is_empty()) || (!qr.is_empty()){
+                    if (!qp.is_empty()) || (!qr.is_empty()) {
                         result.push((qp.clone(), qr.clone()));
-                    } 
-                },
+                    }
+                }
                 (Some(qp), None) => {
-                    if !qp.is_empty(){
+                    if !qp.is_empty() {
                         result.push((qp.clone(), QuerySegment::empty_transform_query_segment()));
                     }
-                },
+                }
                 (None, Some(qr)) => {
                     if !qr.is_empty() {
                         result.push((Query::new(), qr.clone()));
                     }
-                },
-                (None, None) => {},
+                }
+                (None, None) => {}
             }
         }
         while qp.is_some() {
-            if !qp.as_ref().unwrap().is_empty(){
+            if !qp.as_ref().unwrap().is_empty() {
                 last = qp.clone();
-            }
-            else{
+            } else {
                 last = None;
             }
             let (p, r) = qp.unwrap().predecessor();
@@ -1109,12 +1236,15 @@ impl Query {
             qp = p;
         }
 
-        if let Some(r) = last{
-            add_to_result(&mut result, &None, &r.resource_query().map(|x| QuerySegment::Resource(x)));
+        if let Some(r) = last {
+            add_to_result(
+                &mut result,
+                &None,
+                &r.resource_query().map(|x| QuerySegment::Resource(x)),
+            );
         }
         result
     }
-
 
     /// Query without the filename.
     pub fn without_filename(self) -> Query {
@@ -1255,7 +1385,7 @@ mod tests {
     }
 
     #[test]
-    fn add_filename(){
+    fn add_filename() {
         let action = ActionRequest::new("action".to_owned());
         let filename = ResourceName::new("file.txt".to_owned());
         let a = TransformQuerySegment {
@@ -1263,7 +1393,7 @@ mod tests {
             filename: None,
             ..Default::default()
         };
-        let f=TransformQuerySegment{
+        let f = TransformQuerySegment {
             query: vec![],
             filename: Some(filename),
             ..Default::default()
@@ -1276,13 +1406,43 @@ mod tests {
     #[test]
     fn to_absolute1() {
         let cwd_key = parse_key("a/b/c").unwrap();
-        assert_eq!(parse_key("./x").unwrap().to_absolute(&cwd_key).encode(), "a/b/c/x");
-        assert_eq!(parse_key("../x").unwrap().to_absolute(&cwd_key).encode(), "a/b/x");
-        assert_eq!(parse_key("../../x").unwrap().to_absolute(&cwd_key).encode(), "a/x");
-        assert_eq!(parse_key("../../../x").unwrap().to_absolute(&cwd_key).encode(), "x");
-        assert_eq!(parse_key("../../../../x").unwrap().to_absolute(&cwd_key).encode(), "x");
-        assert_eq!(parse_key("A/B/./x").unwrap().to_absolute(&cwd_key).encode(), "A/B/x");
-        assert_eq!(parse_key("A/B/../x").unwrap().to_absolute(&cwd_key).encode(), "A/x");
+        assert_eq!(
+            parse_key("./x").unwrap().to_absolute(&cwd_key).encode(),
+            "a/b/c/x"
+        );
+        assert_eq!(
+            parse_key("../x").unwrap().to_absolute(&cwd_key).encode(),
+            "a/b/x"
+        );
+        assert_eq!(
+            parse_key("../../x").unwrap().to_absolute(&cwd_key).encode(),
+            "a/x"
+        );
+        assert_eq!(
+            parse_key("../../../x")
+                .unwrap()
+                .to_absolute(&cwd_key)
+                .encode(),
+            "x"
+        );
+        assert_eq!(
+            parse_key("../../../../x")
+                .unwrap()
+                .to_absolute(&cwd_key)
+                .encode(),
+            "x"
+        );
+        assert_eq!(
+            parse_key("A/B/./x").unwrap().to_absolute(&cwd_key).encode(),
+            "A/B/x"
+        );
+        assert_eq!(
+            parse_key("A/B/../x")
+                .unwrap()
+                .to_absolute(&cwd_key)
+                .encode(),
+            "A/x"
+        );
     }
     #[test]
     fn key_parent() {
@@ -1290,10 +1450,10 @@ mod tests {
         assert_eq!(key.parent().encode(), "a/b");
         assert_eq!(key.parent().parent().encode(), "a");
         assert_eq!(key.parent().parent().parent().encode(), "");
-        assert_eq!(key.parent().parent().parent().parent().encode(), "");        
+        assert_eq!(key.parent().parent().parent().parent().encode(), "");
     }
     #[test]
-    fn test_key_extension(){
+    fn test_key_extension() {
         let key = parse_key("").unwrap();
         assert_eq!(key.extension(), None);
         let key = parse_key("a").unwrap();
