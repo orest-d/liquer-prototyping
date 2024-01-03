@@ -1,6 +1,5 @@
 use crate::error::Error;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::metadata::Metadata;
@@ -23,7 +22,7 @@ pub trait BinCache
     /// Get metadata associated with the key
     fn get_metadata(&self, query: &Query) -> Option<Arc<Metadata>>;
     /// Set a state associated with the key
-    fn set_binary(&mut self, data:&Vec<u8>, metadata:&Metadata) -> Result<(), Error>;
+    fn set_binary(&mut self, data:&[u8], metadata:&Metadata) -> Result<(), Error>;
     /// Set metadata associated with the key
     fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error>;
     /// Remove a state associated with the key
@@ -49,7 +48,7 @@ impl BinCache for NoBinCache
         None
     }
 
-    fn set_binary(&mut self, data: &Vec<u8>, metadata: &Metadata) -> Result<(), Error> {
+    fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error> {
         Err(Error::CacheNotSupported)
     }
 
@@ -95,8 +94,20 @@ impl BinCache for MemoryBinCache
 
     fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error> {
         let query = metadata.query()?;
-        if let Some((am, data)) = self.0.get(&query) {
-            todo!("Update metadata")
+        if let Some((am, data)) = self.0.get_mut(&query) {
+            *am = Arc::new(metadata.clone());
+        } else {
+            self.0
+                .insert(query, (Arc::new(metadata.clone()), None));
+        }
+        Ok(())
+    }
+
+    fn set_binary(&mut self, data:&[u8], metadata:&Metadata) -> Result<(), Error> {
+        let query = metadata.query()?;
+        if let Some((am, d)) = self.0.get_mut(&query) {
+            *am = Arc::new(metadata.clone());
+            *d = Some(data.to_vec());
         } else {
             self.0
                 .insert(query, (Arc::new(metadata.clone()), None));
@@ -125,9 +136,6 @@ impl BinCache for MemoryBinCache
         }   
     }
 
-    fn set_binary(&mut self, data:&Vec<u8>, metadata:&Metadata) -> Result<(), Error> {
-        todo!()
-    }
 }
 
 #[cfg(test)]
@@ -135,61 +143,63 @@ mod tests {
     use std::{sync::Mutex, thread, time::Duration};
 
     use super::*;
-    use crate::value::*;
+    use crate::parse::{parse_key, parse_query};
 
     #[test]
-    fn test_no_cache() {
-        let cache: NoCache<Value> = NoCache(PhantomData);
-        assert!(cache.get("key").is_none());
-        assert_eq!(cache.contains("key"), false);
+    fn test_no_cache() -> Result<(), Error> {
+        let cache: NoBinCache = NoBinCache;
+        let key = parse_query("-R/key")?;
+        assert!(cache.get_metadata(&key).is_none());
+        assert_eq!(cache.contains(&key), false);
+        Ok(())
     }
     #[test]
     fn test_memory_cache() -> Result<(), Error> {
-        let mut cache = MemoryCache::<Value>::new();
-        assert!(cache.get("key").is_none());
-        assert_eq!(cache.contains("key"), false);
-        cache.set(State::from_query("key")?)?;
-        assert_eq!(cache.contains("key"), true);
-        assert_eq!(cache.get("key").unwrap().cache_key(), "key");
+        let mut cache = MemoryBinCache::new();
+        let key = parse_query("-R/key")?;
+        assert_eq!(cache.contains(&key), false);
+        cache.set_binary("hello".as_bytes(),&Metadata::new())?;
+        assert_eq!(cache.contains(&key), true);
+        assert_eq!(cache.get_binary(&key).is_some(), true);
         Ok(())
     }
     #[test]
     fn test_memory_cache_threaded() -> Result<(), Error> {
-        let mut cache = MemoryCache::<Value>::new();
-        assert!(cache.get("key").is_none());
+        let key = parse_query("-R/key")?;
+        let mut cache = MemoryBinCache::new();
+        assert!(cache.get_binary(&key).is_none());
         let cache = Arc::new(Mutex::new(cache));
         let c1 = cache.clone();
         let t1 = thread::spawn(move || {
             if let Ok(mut cache) = c1.lock() {
-                let state = State::from_query("key").unwrap();
-                cache.set(state).unwrap();
-                assert!(cache.get("key").unwrap().is_empty());
-                println!("T1 CACHED {:?}", cache.get("key"));
+                let key = parse_query("-R/key").unwrap();
+                cache.set_binary("hello1".as_bytes(), &Metadata::new()).unwrap();
+                assert!(cache.get_metadata(&key).unwrap().query().unwrap() == key);
+                println!("T1 CACHED {:?}", cache.get_binary(&key));
             }
         });
         let c2 = cache.clone();
         let t2 = thread::spawn(move || {
             thread::sleep(Duration::from_millis(200));
             if let Ok(mut cache) = c2.lock() {
-                let state = State::from_query("key").unwrap().with_data(Value::I32(123));
-                cache.set(state).unwrap();
-                println!("T2 CACHED {:?}", cache.get("key"));
+                let key = parse_query("-R/key").unwrap();
+                cache.set_binary("hello2".as_bytes(), &Metadata::new()).unwrap();
+                println!("T2 CACHED {:?}", cache.get_binary(&key));
             }
         });
         t1.join().unwrap();
         if let Ok(cache) = cache.lock() {
-            assert!(cache.contains("key"));
-            println!("Jointed t1 CACHED {:?}", cache.get("key"));
-            assert!(cache.get("key").unwrap().is_empty());
+            assert!(cache.contains(&key));
+            println!("Jointed t1 CACHED {:?}", cache.get_binary(&key));
+            assert!(cache.get_binary(&key).is_some());
         } else {
             assert!(false);
         }
         t2.join().unwrap();
         if let Ok(cache) = cache.lock() {
-            assert!(cache.contains("key"));
-            println!("Jointed t2 CACHED {:?}", cache.get("key"));
-            assert!(!cache.get("key").unwrap().is_empty());
-            assert_eq!(*cache.get("key").unwrap().data, Value::I32(123));
+            assert!(cache.contains(&key));
+            println!("Jointed t2 CACHED {:?}", cache.get_binary(&key));
+            assert!(!cache.get_binary(&key).is_some());
         } else {
             assert!(false);
         }
