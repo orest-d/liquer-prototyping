@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 pub mod parse;
 pub mod store;
+pub mod cache;
 pub mod metadata;
 use crate::parse::*;
 
@@ -24,6 +25,9 @@ fn liquers_py(_py: Python, m: &PyModule) -> PyResult<()> {
 
     m.add_class::<crate::store::Store>()?;
     m.add_function(wrap_pyfunction!(crate::store::local_filesystem_store, m)?)?;
+
+    m.add_class::<crate::cache::Cache>()?;
+    m.add_function(wrap_pyfunction!(crate::cache::memory_cache, m)?)?;
    
     Ok(())
 }

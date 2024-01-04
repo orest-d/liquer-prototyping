@@ -481,7 +481,7 @@ impl QuerySegment {
 }
 
 #[pyclass]
-pub struct Query(liquers_core::query::Query);
+pub struct Query(pub liquers_core::query::Query);
 
 #[pymethods]
 impl Query {
