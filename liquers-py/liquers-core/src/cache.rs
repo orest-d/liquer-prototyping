@@ -12,8 +12,7 @@ use crate::query::Query;
 /// Store uses Key as a key, while Cache uses a Query.
 /// Primary use of Cache is accelerating the evaluation of queries and making short-lived results available via web API.
 /// Binary cache interface is enough to implement the cache web API.
-pub trait BinCache
-{
+pub trait BinCache {
     /// Clean the cache
     /// Empties all the data in the cache
     fn clear(&mut self);
@@ -22,7 +21,7 @@ pub trait BinCache
     /// Get metadata associated with the key
     fn get_metadata(&self, query: &Query) -> Option<Arc<Metadata>>;
     /// Set a state associated with the key
-    fn set_binary(&mut self, data:&[u8], metadata:&Metadata) -> Result<(), Error>;
+    fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error>;
     /// Set metadata associated with the key
     fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error>;
     /// Remove a state associated with the key
@@ -36,8 +35,7 @@ pub trait BinCache
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NoBinCache;
 
-impl BinCache for NoBinCache
-{
+impl BinCache for NoBinCache {
     fn clear(&mut self) {}
 
     fn get_binary(&self, query: &Query) -> Option<Vec<u8>> {
@@ -78,8 +76,7 @@ impl MemoryBinCache {
     }
 }
 
-impl BinCache for MemoryBinCache
-{
+impl BinCache for MemoryBinCache {
     fn clear(&mut self) {
         self.0.clear();
     }
@@ -97,20 +94,18 @@ impl BinCache for MemoryBinCache
         if let Some((am, data)) = self.0.get_mut(&query) {
             *am = Arc::new(metadata.clone());
         } else {
-            self.0
-                .insert(query, (Arc::new(metadata.clone()), None));
+            self.0.insert(query, (Arc::new(metadata.clone()), None));
         }
         Ok(())
     }
 
-    fn set_binary(&mut self, data:&[u8], metadata:&Metadata) -> Result<(), Error> {
+    fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error> {
         let query = metadata.query()?;
         if let Some((am, d)) = self.0.get_mut(&query) {
             *am = Arc::new(metadata.clone());
             *d = Some(data.to_vec());
         } else {
-            self.0
-                .insert(query, (Arc::new(metadata.clone()), None));
+            self.0.insert(query, (Arc::new(metadata.clone()), Some(data.to_vec())));
         }
         Ok(())
     }
@@ -133,9 +128,8 @@ impl BinCache for MemoryBinCache
             data.clone()
         } else {
             None
-        }   
+        }
     }
-
 }
 
 #[cfg(test)]
@@ -158,7 +152,10 @@ mod tests {
         let mut cache = MemoryBinCache::new();
         let key = parse_query("-R/key")?;
         assert_eq!(cache.contains(&key), false);
-        cache.set_binary("hello".as_bytes(),&Metadata::new())?;
+        cache.set_binary(
+            "hello".as_bytes(),
+            &Metadata::new().with_query(key.to_owned()),
+        )?;
         assert_eq!(cache.contains(&key), true);
         assert_eq!(cache.get_binary(&key).is_some(), true);
         Ok(())
@@ -173,7 +170,12 @@ mod tests {
         let t1 = thread::spawn(move || {
             if let Ok(mut cache) = c1.lock() {
                 let key = parse_query("-R/key").unwrap();
-                cache.set_binary("hello1".as_bytes(), &Metadata::new()).unwrap();
+                cache
+                    .set_binary(
+                        "hello1".as_bytes(),
+                        &Metadata::new().with_query(key.to_owned()),
+                    )
+                    .unwrap();
                 assert!(cache.get_metadata(&key).unwrap().query().unwrap() == key);
                 println!("T1 CACHED {:?}", cache.get_binary(&key));
             }
@@ -183,14 +185,19 @@ mod tests {
             thread::sleep(Duration::from_millis(200));
             if let Ok(mut cache) = c2.lock() {
                 let key = parse_query("-R/key").unwrap();
-                cache.set_binary("hello2".as_bytes(), &Metadata::new()).unwrap();
+                cache
+                    .set_binary(
+                        "hello2".as_bytes(),
+                        &Metadata::new().with_query(key.to_owned()),
+                    )
+                    .unwrap();
                 println!("T2 CACHED {:?}", cache.get_binary(&key));
             }
         });
         t1.join().unwrap();
         if let Ok(cache) = cache.lock() {
             assert!(cache.contains(&key));
-            println!("Jointed t1 CACHED {:?}", cache.get_binary(&key));
+            println!("Joint t1 CACHED {:?}", cache.get_binary(&key));
             assert!(cache.get_binary(&key).is_some());
         } else {
             assert!(false);
@@ -198,8 +205,8 @@ mod tests {
         t2.join().unwrap();
         if let Ok(cache) = cache.lock() {
             assert!(cache.contains(&key));
-            println!("Jointed t2 CACHED {:?}", cache.get_binary(&key));
-            assert!(!cache.get_binary(&key).is_some());
+            println!("Joint t2 CACHED {:?}", cache.get_binary(&key));
+            assert!(cache.get_binary(&key).is_some());
         } else {
             assert!(false);
         }

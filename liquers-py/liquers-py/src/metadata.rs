@@ -9,6 +9,7 @@ impl Metadata {
     pub fn new() -> Self {
         Metadata(liquers_core::metadata::Metadata::new())
     }
+    
     #[staticmethod]
     pub fn from_json(json: &str) -> PyResult<Self> {
         match liquers_core::metadata::Metadata::from_json(json) {
@@ -18,9 +19,20 @@ impl Metadata {
             )),
         }
     }
+
     pub fn to_json(&self) -> PyResult<String> {
         match self.0.to_json() {
             Ok(s) => Ok(s),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+                e.to_string(),
+            )),
+        }
+    }
+
+    #[getter]
+    pub fn query(&self) -> PyResult<String> {
+        match self.0.query() {
+            Ok(s) => Ok(s.encode()),
             Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
                 e.to_string(),
             )),

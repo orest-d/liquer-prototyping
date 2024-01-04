@@ -42,11 +42,17 @@ pub struct MetadataRecord {
 }
 
 impl MetadataRecord {
+    /// Create a new empty MetadataRecord with default values
     pub fn new() -> MetadataRecord {
         MetadataRecord {
             is_error: false,
             ..Self::default()
         }
+    }
+    /// Set the query of the MetadataRecord
+    pub fn with_query(&mut self, query: Query) -> &mut Self {
+        self.query = query;
+        self
     }
     /*
     pub fn from_query(query: &str) -> Result<Self, Error> {
@@ -66,6 +72,29 @@ pub enum Metadata {
 impl Metadata {
     pub fn new() -> Metadata {
         Metadata::MetadataRecord(MetadataRecord::new())
+    }
+
+    pub fn with_query(&mut self, query: Query) -> &mut Self {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                o.insert("query".to_string(), Value::String(query.encode()));
+                self
+            },
+            Metadata::MetadataRecord(m) => {
+                m.with_query(query);
+                self
+            },
+            Metadata::LegacyMetadata(serde_json::Value::Null) => {
+                let mut m = MetadataRecord::new();
+                m.query = query;
+                *self = Metadata::MetadataRecord(m);
+                self
+            },
+
+            _ => {
+                panic!("Cannot set query on unsupported legacy metadata")
+            },
+        }
     }
 
     pub fn from_json(json: &str) -> serde_json::Result<Metadata> {
