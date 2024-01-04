@@ -286,8 +286,10 @@ impl Store for FileStore {
     }
     fn get(&self, key: &Key) -> Result<(Vec<u8>, Metadata), StoreError> {
         let data = self.get_bytes(key)?;
-        let metadata = self.get_metadata(key)?;
-        Ok((data, metadata))
+        match self.get_metadata(key){
+            Ok(metadata) => Ok((data, metadata)),
+            Err(_) => Ok((data, Metadata::MetadataRecord(MetadataRecord::new()))),
+        }
     }
 
     fn get_bytes(&self, key: &Key) -> Result<Vec<u8>, StoreError> {
