@@ -33,12 +33,33 @@ pub struct LogEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct MetadataRecord {
     pub log: Vec<LogEntry>,
+    #[serde(with = "query_format")]
     pub query: Query,
     pub status: Status,
     pub type_identifier: String,
     pub message: String,
     pub is_error: bool,
     pub media_type: String,
+}
+
+mod query_format {
+    use super::*;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(query: &Query, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&query.encode())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Query, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        parse::parse_query(&s).map_err(de::Error::custom)
+    }
 }
 
 impl MetadataRecord {

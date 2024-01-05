@@ -32,17 +32,36 @@ impl Cache {
     }
 
     fn set_metadata(&mut self, metadata: &crate::metadata::Metadata) -> PyResult<()> {
-        self.0.lock().unwrap().set_metadata(&metadata.0);
+        self.0.lock().unwrap().set_metadata(&metadata.0).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                "Error setting metadata: {}",
+                e
+            ))
+        })?;
         Ok(())
     }
 
     fn set_binary(&mut self, data: &[u8], metadata: &crate::metadata::Metadata) -> PyResult<()> {
-        self.0.lock().unwrap().set_binary(data, &metadata.0);
+        self.0
+            .lock()
+            .unwrap()
+            .set_binary(data, &metadata.0)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                    "Error setting binary: {}",
+                    e
+                ))
+            })?;
         Ok(())
     }
 
     fn remove(&mut self, query: &crate::parse::Query) -> PyResult<()> {
-        self.0.lock().unwrap().remove(&query.0);
+        self.0.lock().unwrap().remove(&query.0).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                "Error removing from cache: {}",
+                e
+            ))
+        })?;
         Ok(())
     }
 

@@ -30,12 +30,18 @@ impl Metadata {
     }
 
     #[getter]
-    pub fn query(&self) -> PyResult<String> {
+    pub fn query(&self) -> PyResult<crate::parse::Query> {
         match self.0.query() {
-            Ok(s) => Ok(s.encode()),
+            Ok(q) => Ok(crate::parse::Query(q)),
             Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(
                 e.to_string(),
             )),
         }
     }
+
+    #[setter]
+    pub fn set_query(&mut self, query: crate::parse::Query) {
+        self.0.with_query(query.0);
+    }
+
 }
