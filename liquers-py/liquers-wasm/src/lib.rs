@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -9,6 +11,21 @@ extern "C" {
 #[wasm_bindgen]
 pub fn greet(name: &str) {
     alert(&format!("Hello, {}!", name));
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Query (pub liquers_core::query::Query);
+
+#[wasm_bindgen]
+impl Query {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self (liquers_core::query::Query::new())
+    }
+
+    pub fn encode(&self) -> String {
+        self.0.encode()
+    }   
 }
 
 #[wasm_bindgen]

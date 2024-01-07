@@ -7,8 +7,8 @@ use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, Resource
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
 pub enum Step {
-    GetRes(Key),
-    GetResMeta(Key),
+    GetResource(Key),
+    GetResourceMetadata(Key),
     Evaluate(Query),
     ApplyAction {
         ns: Option<Vec<ActionParameter>>,
@@ -38,12 +38,12 @@ impl Step {
 impl Display for Step {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Step::GetRes(s) => write!(
+            Step::GetResource(s) => write!(
                 f,
                 "GET RES         {}",
                 s.encode()
             ),
-            Step::GetResMeta(s) => {
+            Step::GetResourceMetadata(s) => {
                 write!(
                     f,
                     "GET RES META    {}",
@@ -98,7 +98,7 @@ impl Plan {
                         ));
                     }
                     if head.parameters.is_empty() {
-                        plan.steps.push(Step::GetRes(res.key.clone()));
+                        plan.steps.push(Step::GetResource(res.key.clone()));
                     } else {
                         if head.parameters[0].value == "meta" {
                             if head.parameters.len() > 1 {
@@ -108,18 +108,18 @@ impl Plan {
                                     head.parameters[2]
                                 ));
                             }
-                            plan.steps.push(Step::GetResMeta(res.key.clone()));
+                            plan.steps.push(Step::GetResourceMetadata(res.key.clone()));
                         } else {
                             plan.warning(format!(
                                 "Resource segment '{}...' parameters at {} ignored",
                                 head.encode(),
                                 head.parameters[0]
                             ));
-                            plan.steps.push(Step::GetRes(res.key.clone()));
+                            plan.steps.push(Step::GetResource(res.key.clone()));
                         }
                     }
                 } else {
-                    plan.steps.push(Step::GetRes(res.key.clone()));
+                    plan.steps.push(Step::GetResource(res.key.clone()));
                 }
             }
             Some(QuerySegment::Transform(tqs)) => {

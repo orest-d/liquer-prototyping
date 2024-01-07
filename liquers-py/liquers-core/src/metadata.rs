@@ -1,7 +1,7 @@
 use serde_json::{self, Value};
 
 use crate::parse;
-use crate::query::Query;
+use crate::query::{Query, Position};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {
@@ -25,9 +25,54 @@ impl Default for Status {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum LogEntryKind {
+    #[serde(rename = "debug")]
+    Debug,
+    #[serde(rename = "info")]
+    Info,
+    #[serde(rename = "warning")]
+    Warning,
+    #[serde(rename = "error")]
+    Error,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LogEntry {
-    message: String,
-    message_html: String,
+    pub kind: LogEntryKind,
+    pub message: String,
+    #[serde(default)]
+    pub message_html: Option<String>,
+    pub timestamp: String,
+    #[serde(with = "option_query_format", default)]
+    pub query: Option<Query>,
+    #[serde(default)]
+    pub position: Position,
+    #[serde(default)]
+    pub traceback: Option<String>,
+}
+
+impl LogEntry {
+    pub fn new(kind: LogEntryKind, message: String) -> LogEntry {
+        LogEntry {
+            kind,
+            message,
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for LogEntry {
+    fn default() -> Self {
+        LogEntry {
+            kind: LogEntryKind::Info,
+            message: "".to_string(),
+            message_html: None,
+            timestamp: "".to_string(),
+            query: None,
+            position: Position::default(),
+            traceback: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -59,6 +104,40 @@ mod query_format {
     {
         let s = String::deserialize(deserializer)?;
         parse::parse_query(&s).map_err(de::Error::custom)
+    }
+}
+
+mod option_query_format {
+    use super::*;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(query: &Option<Query>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match query {
+            Some(q) => serializer.serialize_str(&q.encode()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Query>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer);
+        if s.is_err() {
+            return Ok(None);
+        }
+        else {
+            let s = s.unwrap();
+            if s.is_empty() {
+                return Ok(Some(Query::new()));
+            }
+            else{
+                return parse::parse_query(&s).map_err(de::Error::custom).map(Some);
+            }
+        }
     }
 }
 
