@@ -1,9 +1,9 @@
 use serde_json::{self, Value};
 
 use crate::parse;
-use crate::query::{Query, Position};
+use crate::query::{Query, Position, Key};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Status {
     None,
     Submitted,
@@ -59,6 +59,43 @@ impl LogEntry {
             ..Self::default()
         }
     }
+    pub fn info(message: String) -> LogEntry {
+        LogEntry::new(LogEntryKind::Info, message)
+    }
+    pub fn debug(message: String) -> LogEntry {
+        LogEntry::new(LogEntryKind::Debug, message)
+    }
+    pub fn warning(message: String) -> LogEntry {
+        LogEntry::new(LogEntryKind::Warning, message)
+    }
+    pub fn error(message: String) -> LogEntry {
+        LogEntry::new(LogEntryKind::Error, message)
+    }
+    pub fn with_query(&mut self, query: Query) -> &mut Self {
+        self.query = Some(query);
+        self
+    }
+    pub fn with_position(&mut self, position: Position) -> &mut Self {
+        self.position = position;
+        self
+    }
+    pub fn with_traceback(&mut self, traceback: String) -> &mut Self {
+        self.traceback = Some(traceback);
+        self
+    }
+    pub fn with_message_html(&mut self, message_html: String) -> &mut Self {
+        self.message_html = Some(message_html);
+        self
+    }
+    pub fn with_custom_timestamp(&mut self, timestamp: String) -> &mut Self {
+        self.timestamp = timestamp;
+        self
+    }
+    pub fn with_timestamp(&mut self) -> &mut Self {
+        self.timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        self
+    }
+
 }
 
 impl Default for LogEntry {
@@ -80,6 +117,8 @@ pub struct MetadataRecord {
     pub log: Vec<LogEntry>,
     #[serde(with = "query_format")]
     pub query: Query,
+    #[serde(with = "option_key_format")]
+    pub key: Option<Key>,
     pub status: Status,
     pub type_identifier: String,
     pub message: String,
@@ -106,6 +145,28 @@ mod query_format {
         parse::parse_query(&s).map_err(de::Error::custom)
     }
 }
+
+mod key_format {
+    use crate::query::Key;
+
+    use super::*;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(key: &Key, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&key.encode())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Key, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        parse::parse_key(&s).map_err(de::Error::custom)
+    }
+}   
 
 mod option_query_format {
     use super::*;
@@ -141,6 +202,42 @@ mod option_query_format {
     }
 }
 
+mod option_key_format {
+    use crate::query::Key;
+
+    use super::*;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(key: &Option<Key>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match key {
+            Some(k) => serializer.serialize_str(&k.encode()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Key>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer);
+        if s.is_err() {
+            return Ok(None);
+        }
+        else {
+            let s = s.unwrap();
+            if s.is_empty() {
+                return Ok(Some(Key::new()));
+            }
+            else{
+                return parse::parse_key(&s).map_err(de::Error::custom).map(Some);
+            }
+        }
+    }
+}   
+
 impl MetadataRecord {
     /// Create a new empty MetadataRecord with default values
     pub fn new() -> MetadataRecord {
@@ -161,6 +258,36 @@ impl MetadataRecord {
         Ok(metadata)
     }
     */
+    pub fn with_key(&mut self, key: Key) -> &mut Self {
+        self.key = Some(key);
+        self
+    }
+    pub fn with_status(&mut self, status: Status) -> &mut Self {
+        self.status = status;
+        self.is_error = status == Status::Error;
+        self
+    }
+    pub fn with_type_identifier(&mut self, type_identifier: String) -> &mut Self {
+        self.type_identifier = type_identifier;
+        self
+    }
+    pub fn with_message(&mut self, message: String) -> &mut Self {
+        self.message = message;
+        self
+    }
+    pub fn with_media_type(&mut self, media_type: String) -> &mut Self {
+        self.media_type = media_type;
+        self
+    }
+    pub fn add_log_entry(&mut self, log_entry: LogEntry) -> &mut Self {
+        self.log.push(log_entry);
+        self
+    }
+    pub fn clean_log(&mut self) -> &mut Self {
+        self.log = vec![];
+        self
+    }
+    
 }
 
 #[derive(Debug, Clone)]
