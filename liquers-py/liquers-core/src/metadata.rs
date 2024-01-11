@@ -383,6 +383,29 @@ impl Metadata {
             }),
         }
     }
+    pub fn with_type_identifier(&mut self, type_identifier: String) -> &mut Self {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                o.insert("type_identifier".to_string(), Value::String(type_identifier));
+                self
+            },
+            Metadata::MetadataRecord(m) => {
+                m.with_type_identifier(type_identifier);
+                self
+            },
+            Metadata::LegacyMetadata(serde_json::Value::Null) => {
+                let mut m = MetadataRecord::new();
+                m.type_identifier = type_identifier;
+                *self = Metadata::MetadataRecord(m);
+                self
+            },
+
+            _ => {
+                panic!("Cannot set type_identifier on unsupported legacy metadata")
+            },
+        }
+    }
+
 }
 
 impl From<MetadataRecord> for Metadata {
