@@ -55,14 +55,17 @@ pub trait ValueInterface: Clone {
     fn type_name(&self) -> Cow<'static, str>;
 
     /// Default file extension; determines the default data format
-    /// Must be consistent with the default_mimetype.
+    /// Must be consistent with the default_media_type.
     fn default_extension(&self) -> Cow<'static, str>;
 
     /// Default file name
     fn default_filename(&self) -> Cow<'static, str>;
 
     /// Default mime type - must be consistent with the default_extension
-    fn default_mimetype(&self) -> Cow<'static, str>;
+    fn default_media_type(&self) -> Cow<'static, str>;
+
+    /// Try to get a JSON-serializable value
+    fn try_into_json_value(&self) -> Result<serde_json::Value, Error>;
 }
 
 impl ValueInterface for Value {
@@ -111,6 +114,34 @@ impl ValueInterface for Value {
             _ => Err(Error::ConversionError {
                 message: format!("{} is not an i32", self.identifier()),
             }),
+        }
+    }
+
+    fn try_into_json_value(&self) -> Result<serde_json::Value, Error>{
+        match self {
+            Value::None => Ok(serde_json::Value::Null),
+            Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+            Value::I32(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+            Value::I64(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+            Value::F64(n) => Ok(serde_json::Value::Number(serde_json::Number::from_f64(*n).unwrap())),
+            Value::Text(t) => Ok(serde_json::Value::String(t.to_owned())),
+            Value::Array(a) => {
+                let mut v = Vec::new();
+                for x in a {
+                    v.push(x.try_into_json_value()?);
+                }
+                Ok(serde_json::Value::Array(v))
+            },
+            Value::Object(o) => {
+                let mut m = serde_json::Map::new();
+                for (k, v) in o {
+                    m.insert(k.to_owned(), v.try_into_json_value()?);
+                }
+                Ok(serde_json::Value::Object(m))
+            },
+            _ => Err(Error::ConversionError {
+                message: format!("{} is not a JSON value", self.identifier()),
+            })
         }
     }
 
@@ -170,7 +201,7 @@ impl ValueInterface for Value {
         }
     }
 
-    fn default_mimetype(&self) -> Cow<'static, str> {
+    fn default_media_type(&self) -> Cow<'static, str> {
         match self {
             Value::None => "application/json".into(),
             Value::Bool(_) => "application/json".into(),

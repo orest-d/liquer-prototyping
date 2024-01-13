@@ -2,6 +2,7 @@ use itertools::Itertools;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::ops::{Add, Index, IndexMut};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
@@ -106,6 +107,14 @@ impl ActionParameter {
             Self::Link(query, _) => format!("~X~{}~E", query.encode()),
         }
     }
+    /*
+    pub fn to_html(&self, mark_position:&Position) -> String {
+        match self {
+            Self::String(s, _) => encode_token(s),
+            Self::Link(query, _) => format!("<a href=\"{}\">{}</a>", query.encode(), query.encode()),
+        }
+    }
+    */
 }
 
 impl Display for ActionParameter {
@@ -1000,12 +1009,46 @@ impl Hash for QuerySegment {
     }
 }
 
+/// Query source - characterizes the place (string) where the query was read from.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum QuerySource {
+    /// Query was read from a result of another query
+    Query(String),
+    /// Query was read from a store
+    Key(Key),
+    /// Query was read from a string
+    String(String),
+    /// Query was read from an unknown source
+    Other(String),
+    /// The source of the query is unspecified
+    Unspecified,
+}
+
+impl Default for QuerySource {
+    fn default() -> Self {
+        QuerySource::Unspecified
+    }
+}
+
+impl Display for QuerySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QuerySource::Query(s) => write!(f, "query {}", s),
+            QuerySource::Key(k) => write!(f, "key {}", k),
+            QuerySource::String(s) => write!(f, "string {}", s),
+            QuerySource::Other(s) => write!(f, "other {}", s),
+            QuerySource::Unspecified => write!(f, "unspecified"),
+        }
+    }
+}
+
 /// Query is a sequence of query segments.
 /// Typically this will be a resource and and/or a transformation applied to a resource.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Query {
     pub segments: Vec<QuerySegment>,
     pub absolute: bool,
+    pub source: QuerySource,
 }
 
 #[allow(dead_code)]
@@ -1015,6 +1058,7 @@ impl Query {
         Query {
             segments: vec![],
             absolute: false,
+            source: QuerySource::Unspecified,
         }
     }
 
@@ -1055,6 +1099,7 @@ impl Query {
                 .map(|x| x.to_absolute(cwd_key))
                 .collect(),
             absolute: self.absolute,
+            source: self.source.clone(),
         }
     }
 
@@ -1131,6 +1176,7 @@ impl Query {
                         Some(Query {
                             segments: self.up_to_last_segment(),
                             absolute: self.absolute,
+                            ..Default::default()
                         }),
                         Some(QuerySegment::Resource(rqs.clone())),
                     )
@@ -1143,6 +1189,7 @@ impl Query {
                         Some(Query {
                             segments: self.up_to_last_segment(),
                             absolute: self.absolute,
+                            ..Default::default()
                         }),
                         r.map(|x| QuerySegment::Transform(x)),
                     )
@@ -1153,6 +1200,7 @@ impl Query {
                         Some(Query {
                             segments: seg,
                             absolute: self.absolute,
+                            ..Default::default()
                         }),
                         r.map(|x| QuerySegment::Transform(x)),
                     )
@@ -1257,6 +1305,7 @@ impl Query {
                 Query {
                     segments: vec![],
                     absolute: self.absolute,
+                    ..Default::default()
                 }
             }
         }
@@ -1306,6 +1355,35 @@ impl Display for Query {
     }
 }
 
+impl PartialEq for Query {
+    fn eq(&self, other: &Self) -> bool {
+        self.segments == other.segments && self.absolute == other.absolute
+    }
+}
+
+impl Eq for Query {}
+
+impl Hash for Query {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.segments.hash(state);
+        self.absolute.hash(state);
+    }
+}
+
+impl Index<usize> for Query {
+    type Output = QuerySegment;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.segments[index]
+    }
+}   
+
+impl IndexMut<usize> for Query {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.segments[index]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::parse::parse_key;
@@ -1330,6 +1408,7 @@ mod tests {
                 ..Default::default()
             })],
             absolute: false,
+            ..Default::default()
         };
         let ap = ActionParameter::Link(q, Position::unknown());
         assert_eq!(ap.encode(), "~X~hello~E");
@@ -1352,6 +1431,7 @@ mod tests {
                 ..Default::default()
             })],
             absolute: false,
+            ..Default::default()
         };
         let a = ActionRequest {
             name: "action".to_owned(),
@@ -1368,6 +1448,7 @@ mod tests {
                 ..Default::default()
             })],
             absolute: false,
+            ..Default::default()
         };
         let a = ActionRequest::new("action1".to_owned()).with_parameters(vec![
             ActionParameter::new_link(q),

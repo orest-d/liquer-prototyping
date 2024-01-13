@@ -137,7 +137,7 @@ mod tests {
     use std::{sync::Mutex, thread, time::Duration};
 
     use super::*;
-    use crate::parse::{parse_key, parse_query};
+    use crate::parse::{parse_query};
 
     #[test]
     fn test_no_cache() -> Result<(), Error> {

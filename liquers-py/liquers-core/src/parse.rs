@@ -417,6 +417,7 @@ fn simple_transform_query(text: Span) -> IResult<Span, Query> {
         Query {
             segments: vec![QuerySegment::Transform(tqs)],
             absolute: abs.is_some(),
+            ..Default::default()
         },
     ))
 }
@@ -439,6 +440,7 @@ fn resource_transform_query(text: Span) -> IResult<Span, Query> {
                 QuerySegment::Transform(tqs),
             ],
             absolute: abs.is_some(),
+            ..Default::default()
         },
     ))
 }
@@ -457,6 +459,7 @@ fn general_query(text: Span) -> IResult<Span, Query> {
         Query {
             segments,
             absolute: abs.is_some(),
+            ..Default::default()
         },
     ))
 }
@@ -468,6 +471,7 @@ fn empty_query(text: Span) -> IResult<Span, Query> {
         Query {
             segments: vec![],
             absolute: abs.is_some(),
+            ..Default::default()
         },
     ))
 }
