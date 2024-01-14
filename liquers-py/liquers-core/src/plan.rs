@@ -1,12 +1,14 @@
-use std::fmt::{Display};
+use std::fmt::Display;
 
 use itertools::Itertools;
 use nom::Err;
 
-use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, ResourceName, Key};
-use crate::command_registry::{CommandMetadata, ArgumentInfo, ArgumentType, EnumArgumentType};
-use crate::value::ValueInterface;
+use crate::command_registry::{
+    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, EnumArgumentType,
+};
 use crate::error::Error;
+use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName};
+use crate::value::ValueInterface;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -22,6 +24,7 @@ pub enum Step {
     Info(String),
     Warning(String),
     Error(String),
+    Plan(Plan),
 }
 
 impl Step {
@@ -42,17 +45,9 @@ impl Step {
 impl Display for Step {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Step::GetResource(s) => write!(
-                f,
-                "GET RES         {}",
-                s.encode()
-            ),
+            Step::GetResource(s) => write!(f, "GET RES         {}", s.encode()),
             Step::GetResourceMetadata(s) => {
-                write!(
-                    f,
-                    "GET RES META    {}",
-                    s.encode()
-                )
+                write!(f, "GET RES META    {}", s.encode())
             }
             Step::Evaluate(s) => write!(f, "EVALUATE        {}", s.encode()),
             Step::ApplyAction { ns, action } => write!(
@@ -66,94 +61,189 @@ impl Display for Step {
             Step::Info(s) => write!(f, "INFO            {s}"),
             Step::Warning(s) => write!(f, "WARNING         {s}"),
             Step::Error(s) => write!(f, "ERROR           {s}"),
+            Step::Plan(p) => write!(f, "PLAN            {p}"),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ResolvedParameters<V:ValueInterface>{
-    pub parameters:Vec<V>,
-    pub links:Vec<(usize, Query)>
+pub struct ResolvedParameters<V: ValueInterface> {
+    pub parameters: Vec<V>,
+    pub links: Vec<(usize, Query)>,
 }
 
-impl<V:ValueInterface> ResolvedParameters<V>{
-    pub fn new() -> Self{
-        ResolvedParameters{
-            parameters:Vec::new(),
-            links:Vec::new(),
+impl<V: ValueInterface> ResolvedParameters<V> {
+    pub fn new() -> Self {
+        ResolvedParameters {
+            parameters: Vec::new(),
+            links: Vec::new(),
         }
     }
 }
 
-struct ParametersResolver<'a, V:ValueInterface>{
-    command_metadata:&'a CommandMetadata,
-    action_request:&'a ActionRequest,
-    resolved_parameters:ResolvedParameters<V>,
-    parameter_number:usize,
-    arginfo_number:usize,
+struct PlanBuilder<'c, V: ValueInterface> {
+    query: Query,
+    command_registry: &'c CommandRegistry,
+    command_metadata: CommandMetadata,
+    action_request: ActionRequest,
+    resolved_parameters: ResolvedParameters<V>,
+    parameter_number: usize,
+    arginfo_number: usize,
 }
 
-impl <'a, V:ValueInterface> ParametersResolver<'a, V>{
-    fn new(command_metadata:&'a CommandMetadata, action_request:&'a ActionRequest) -> Self{
-        ParametersResolver{
-            command_metadata,
-            action_request,
-            resolved_parameters:ResolvedParameters::new(),
-            parameter_number:0,
-            arginfo_number:0,
+impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
+    fn new(query: Query, command_registry: &'c CommandRegistry) -> Self {
+        PlanBuilder {
+            query,
+            command_registry,
+            command_metadata: CommandMetadata::default(),
+            action_request: ActionRequest::default(),
+            resolved_parameters: ResolvedParameters::new(),
+            parameter_number: 0,
+            arginfo_number: 0,
         }
     }
-    fn get(self)->ResolvedParameters<V>{
-        self.resolved_parameters
+
+    fn build(mut self) -> Result<Plan, Error> {
+        let mut plan = Plan {
+            query: self.query.clone(),
+            steps: Vec::new(),
+        };
+        for (q, qs) in self.query.all_predecessor_tuples() {
+            if qs.is_empty() {
+                continue;
+            }
+            if let Some(filename) = qs.filename() {
+                plan.steps.push(Step::Filename(filename));
+                continue;
+            }
+            if let Some(action) = qs.action().as_ref() {
+                self.action_request = action.clone();
+                self.arginfo_number = 0;
+                self.parameter_number = 0;
+                let realm = qs.name();
+                let mut namespaces = if let Some(ns) = q.last_ns() {
+                    ns.iter()
+                        .filter_map(|x| match x {
+                            ActionParameter::String(s, _) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .collect::<Vec<String>>()
+                } else {
+                    vec![]
+                };
+                namespaces.push("".to_string());
+                namespaces.push("root".to_string());
+
+                if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
+                    &realm,
+                    &namespaces,
+                    &action.name,
+                ) {
+                    self.command_metadata = command_metadata.clone();
+                } else {
+                    return Err(Error::ActionNotRegistered {
+                        message: format!(
+                            "Action '{}' not registered in namespaces {}",
+                            action.name, namespaces.iter().map(|ns| format!("'{}'",ns)).join(", ")
+                        ),
+                    });
+                }
+            }
+        }
+        Ok(plan)
     }
 
-    fn pop_action_parameter(&mut self, arginfo:&ArgumentInfo) -> Result<Option<String>, Error>{
-        match self.action_request.parameters.get(self.parameter_number){
-            Some(ActionParameter::String(v,_)) => {self.parameter_number += 1;Ok(Some(v.to_owned()))},
-            Some(ActionParameter::Link(q,_)) => {
-                self.resolved_parameters.links.push((self.resolved_parameters.parameters.len(), q.clone()));
+    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo) -> Result<Option<String>, Error> {
+        match self.action_request.parameters.get(self.parameter_number) {
+            Some(ActionParameter::String(v, _)) => {
+                self.parameter_number += 1;
+                Ok(Some(v.to_owned()))
+            }
+            Some(ActionParameter::Link(q, _)) => {
+                self.resolved_parameters
+                    .links
+                    .push((self.resolved_parameters.parameters.len(), q.clone()));
                 self.parameter_number += 1;
                 Ok(None)
-            },
-            None =>
-            match (&arginfo.default_value, &arginfo.default_query){
-                (Some(v), None) => {Ok(Some(v.to_owned()))},
+            }
+            None => match (&arginfo.default_value, &arginfo.default_query) {
+                (Some(v), None) => Ok(Some(v.to_owned())),
                 (None, Some(q)) => {
-                    self.resolved_parameters.links.push((self.resolved_parameters.parameters.len(), q.clone()));
+                    self.resolved_parameters
+                        .links
+                        .push((self.resolved_parameters.parameters.len(), q.clone()));
                     Ok(None)
-                },
-                (None, None) => {if arginfo.optional {Ok(None)}else{Err(Error::missing_argument(self.arginfo_number, &arginfo.name, &self.action_request.position))}},
-                (Some(_), Some(_)) => Err(Error::NotSupported{message:"Default value and default query are not supported".into()}),
+                }
+                (None, None) => {
+                    if arginfo.optional {
+                        Ok(None)
+                    } else {
+                        Err(Error::missing_argument(
+                            self.arginfo_number,
+                            &arginfo.name,
+                            &self.action_request.position,
+                        ))
+                    }
+                }
+                (Some(_), Some(_)) => Err(Error::NotSupported {
+                    message: "Default value and default query are not supported".into(),
+                }),
             },
         }
     }
 
-    fn pop_value(&mut self, arginfo:&ArgumentInfo) -> Result<V, Error>{
-        match (&arginfo.argument_type, self.pop_action_parameter(arginfo)?){
+    fn pop_value(&mut self, arginfo: &ArgumentInfo) -> Result<V, Error> {
+        match (&arginfo.argument_type, self.pop_action_parameter(arginfo)?) {
             (_, None) => Ok(V::none()),
             (ArgumentType::String, Some(x)) => Ok(V::from_string(x)),
             (ArgumentType::Integer, Some(x)) => V::from_i64_str(&x),
-            (ArgumentType::IntegerOption, Some(x)) => if x==""{Ok(V::none())}else{V::from_i64_str(&x)},
+            (ArgumentType::IntegerOption, Some(x)) => {
+                if x == "" {
+                    Ok(V::none())
+                } else {
+                    V::from_i64_str(&x)
+                }
+            }
             (ArgumentType::Float, Some(x)) => V::from_f64_str(&x),
-            (ArgumentType::FloatOption, Some(x)) => if x==""{Ok(V::none())}else{V::from_f64_str(&x)},
+            (ArgumentType::FloatOption, Some(x)) => {
+                if x == "" {
+                    Ok(V::none())
+                } else {
+                    V::from_f64_str(&x)
+                }
+            }
             (ArgumentType::Boolean, Some(x)) => V::from_bool_str(&x),
             (ArgumentType::Enum(e), Some(x)) => {
-                if let Some(x) = e.name_to_value(&x){
-                    match e.value_type{
+                if let Some(x) = e.name_to_value(&x) {
+                    match e.value_type {
                         EnumArgumentType::String => Ok(V::from_string(x)),
                         EnumArgumentType::Integer => V::from_i64_str(&x),
-                        EnumArgumentType::IntegerOption => if x==""{Ok(V::none())}else{V::from_i64_str(&x)},
+                        EnumArgumentType::IntegerOption => {
+                            if x == "" {
+                                Ok(V::none())
+                            } else {
+                                V::from_i64_str(&x)
+                            }
+                        }
                         EnumArgumentType::Float => V::from_f64_str(&x),
-                        EnumArgumentType::FloatOption => if x==""{Ok(V::none())}else{V::from_f64_str(&x)},
+                        EnumArgumentType::FloatOption => {
+                            if x == "" {
+                                Ok(V::none())
+                            } else {
+                                V::from_f64_str(&x)
+                            }
+                        }
                         EnumArgumentType::Boolean => V::from_bool_str(&x),
                     }
-                }
-                else{
+                } else {
                     Err(Error::conversion_error(x, &e.name))
                 }
-            },
+            }
             (ArgumentType::Any, Some(x)) => Ok(V::from_string(x)),
-            (ArgumentType::None, Some(_)) => Err(Error::NotSupported{message:"None not supported".into()}),
+            (ArgumentType::None, Some(_)) => Err(Error::NotSupported {
+                message: "None not supported".into(),
+            }),
         }
     }
 }
@@ -251,8 +341,7 @@ impl Plan {
                     if !p.is_empty() {
                         plan.steps.push(Step::Evaluate(p.clone()));
                     }
-                }
-                else{
+                } else {
                     plan.warning(format!("Empty remainder"));
                 }
             }
@@ -294,6 +383,7 @@ impl Plan {
         self.steps.iter().any(|x| x.is_warning())
     }
 }
+
 impl Display for Plan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

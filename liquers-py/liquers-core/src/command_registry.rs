@@ -1,4 +1,34 @@
-use crate::{error::Error, query::{ActionParameter, Query}};
+use crate::{error::Error, query::{ActionParameter, Query}, state};
+
+/// A structure holding a description of an identified issue with a command registry
+/// Issue can be either a warning or an error (when is_error is true)
+/// Command can be identified by realm, name and namespace
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CommandRegistryIssue {
+    pub realm: String,
+    pub namespace: String,
+    pub name: String,
+    pub is_error: bool,
+    pub message: String,
+}
+
+impl CommandRegistryIssue {
+    pub fn new(realm: &str, namespace: &str, name: &str, is_error: bool, message: String) -> Self {
+        CommandRegistryIssue {
+            realm: realm.to_string(),
+            namespace: namespace.to_string(),
+            name: name.to_string(),
+            is_error,
+            message: message.to_string(),
+        }
+    }
+    pub fn warning(realm: &str, namespace: &str, name: &str, message: String) -> Self {
+        CommandRegistryIssue::new(realm, name, namespace, false, message)
+    }
+    pub fn error(realm: &str, namespace: &str, name: &str, message: String) -> Self {
+        CommandRegistryIssue::new(realm, name, namespace, true, message)
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgumentAlternative {
@@ -8,11 +38,17 @@ pub struct EnumArgumentAlternative {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum EnumArgumentType {
+    #[serde(rename = "string")]
     String,
+    #[serde(rename = "int")]
     Integer,
+    #[serde(rename = "int_opt")]
     IntegerOption,
+    #[serde(rename = "float")]
     Float,
+    #[serde(rename = "float_opt")]
     FloatOption,
+    #[serde(rename = "bool")]
     Boolean
 }
 
@@ -62,14 +98,22 @@ impl EnumArgument {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ArgumentType {
+    #[serde(rename = "string")]
     String,
+    #[serde(rename = "int")]
     Integer,
+    #[serde(rename = "int_opt")]
     IntegerOption,
+    #[serde(rename = "float")]
     Float,
+    #[serde(rename = "float_opt")]
     FloatOption,
+    #[serde(rename = "bool")]
     Boolean,
     Enum(EnumArgument),
+    #[serde(rename = "any")]
     Any,
+    #[serde(rename = "none")]
     None,
 }
 
@@ -221,7 +265,7 @@ impl Default for ArgumentGUIInfo {
 }
 
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ArgumentInfo {
     pub name: String,
     pub label: String,
@@ -246,6 +290,24 @@ impl ArgumentInfo {
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
+    fn check(&self, realm:&str, namespace:&str, name:&str) -> Vec<CommandRegistryIssue> {
+        let mut issues = Vec::new();
+        if let Some(default_value) = &self.default_value {
+            if let Some(default_query) = &self.default_query {
+                issues.push(CommandRegistryIssue::warning(
+                    realm,
+                    namespace,
+                    name,
+                    format!(
+                        "Argument {} has both default value and default query",
+                        self.name
+                    ),
+                ));
+            }
+        }
+        issues
+    }
+
     pub fn string_argument(name: &str) -> Self {
         ArgumentInfo {
             name: name.to_string(),
@@ -325,11 +387,11 @@ impl ArgumentInfo {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CommandMetadata {
     pub realm: String,
-    pub name: String,
     pub namespace: String,
+    pub name: String,
     pub module: String,
     pub doc: String,
     pub state_argument: ArgumentInfo,
@@ -340,14 +402,22 @@ impl CommandMetadata{
     pub fn new(name: &str) -> Self {
         CommandMetadata {
             realm: "".to_string(),
-            name: name.to_string(),
             namespace: "root".to_string(),
+            name: name.to_string(),
             module: "".to_string(),
             doc: "".to_string(),
             state_argument: ArgumentInfo::any_argument("state"),
             arguments: Vec::new(),
         }
     }
+    pub fn check(&self)->Vec<CommandRegistryIssue>{
+        let mut issues = Vec::new();
+        for a in self.arguments.iter(){
+            issues.append(&mut a.check(&self.realm, &self.namespace, &self.name));
+        }
+        issues
+    }
+
     pub fn with_state_argument(&mut self, state_argument: ArgumentInfo) -> &mut Self {
         self.state_argument = state_argument;
         self
@@ -373,5 +443,37 @@ impl CommandMetadata{
         self.module = module.to_string();
         self
     }
+}
 
+
+/// Command registry is a structure holding description (metadata) of all commands available in the system
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CommandRegistry {
+    pub commands: Vec<CommandMetadata>,
+}
+
+impl CommandRegistry {
+    pub fn new() -> Self {
+        CommandRegistry { commands: Vec::new() }
+    }
+    pub fn add_command(&mut self, command: CommandMetadata) -> &mut Self {
+        self.commands.push(command);
+        self
+    }
+    pub fn find_command(&self, realm:&str, namespace:&str, name: &str) -> Option<CommandMetadata> {
+        for command in &self.commands {
+            if command.realm == realm && command.namespace == namespace && command.name == name {
+                return Some(command.clone());
+            }
+        }
+        None
+    }
+    pub fn find_command_in_namespaces(&self, realm:&str, namespaces:&Vec<String>, name:&str) -> Option<CommandMetadata> {
+        for namespace in namespaces {
+            if let Some(command) = self.find_command(realm, namespace, name) {
+                return Some(command);
+            }
+        }
+        None
+    }
 }

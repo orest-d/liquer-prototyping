@@ -431,6 +431,15 @@ impl TransformQuerySegment {
         }
     }
 
+    /// Return name of the transform query segment
+    pub fn name(&self)->String{
+        if let Some(header) = &self.header {
+            header.name.clone()
+        } else {
+            "".to_owned()
+        }
+    }
+
     pub fn predecessor(&self) -> (Option<TransformQuerySegment>, Option<TransformQuerySegment>) {
         if let Some(filename) = &self.filename {
             (
@@ -737,6 +746,15 @@ impl ResourceQuerySegment {
         }
     }
 
+    /// Return name of the resource query segment
+    pub fn name(&self)->String{
+        if let Some(header) = &self.header {
+            header.name.clone()
+        } else {
+            "".to_owned()
+        }
+    }
+
     /// Return resource query position
     pub fn position(&self) -> Position {
         if let Some(header) = &self.header {
@@ -853,6 +871,14 @@ impl QuerySegment {
     /// Create a new empty resource query segment
     pub fn empty_resource_query_segment() -> Self {
         QuerySegment::Resource(ResourceQuerySegment::new())
+    }
+
+    /// Return name of the query segment
+    pub fn name(&self)->String{
+        match self {
+            QuerySegment::Resource(rqs) => rqs.name(),
+            QuerySegment::Transform(tqs) => tqs.name(),
+        }
     }
 
     /// Encode query segment as a string
@@ -1079,12 +1105,16 @@ impl Query {
     pub fn is_empty(&self) -> bool {
         self.segments.is_empty()
     }
+    /// Returns true if the query is a namespace definition.
     pub fn is_ns(&self) -> bool {
         self.transform_query().map_or(false, |x| x.is_ns())
     }
+    /// Returns the namespace definition if path is a namespace action.
     pub fn ns(&self) -> Option<Vec<ActionParameter>> {
         self.transform_query().and_then(|x| x.ns())
     }
+
+    /// Returns the last namespace definition if available
     pub fn last_ns(&self) -> Option<Vec<ActionParameter>> {
         self.transform_query().and_then(|x| x.last_ns())
     }
