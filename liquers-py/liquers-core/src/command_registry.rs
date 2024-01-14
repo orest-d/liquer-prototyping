@@ -1,4 +1,4 @@
-use crate::{error::Error, query::ActionParameter};
+use crate::{error::Error, query::{ActionParameter, Query}};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgumentAlternative {
@@ -7,12 +7,59 @@ pub struct EnumArgumentAlternative {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum EnumArgumentType {
+    String,
+    Integer,
+    IntegerOption,
+    Float,
+    FloatOption,
+    Boolean
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgument {
     pub name: String,
     pub values: Vec<EnumArgumentAlternative>,
     pub others_allowed: bool,
+    pub value_type: EnumArgumentType,
 }
 
+impl EnumArgument {
+    pub fn new(name: &str) -> Self {
+        EnumArgument {
+            name: name.to_string(),
+            values: Vec::new(),
+            others_allowed: false,
+            value_type: EnumArgumentType::String,
+        }
+    }
+    pub fn with_value(&mut self, name: &str, value: &str) -> &mut Self {
+        self.values.push(EnumArgumentAlternative {
+            name: name.to_string(),
+            value: value.to_string(),
+        });
+        self
+    }
+    pub fn with_value_type(&mut self, value_type: EnumArgumentType) -> &mut Self {
+        self.value_type = value_type;
+        self
+    }
+    pub fn with_others_allowed(&mut self) -> &mut Self {
+        self.others_allowed = true;
+        self
+    }
+    pub fn name_to_value(&self, value:&str)->Option<String>{
+        for alternative in &self.values {
+            if alternative.name == value {
+                return Some(alternative.value.clone());
+            }
+        }
+        if self.others_allowed{
+            return Some(value.to_string());
+        }
+        None
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ArgumentType {
     String,
@@ -179,6 +226,8 @@ pub struct ArgumentInfo {
     pub name: String,
     pub label: String,
     pub default_value: Option<String>,
+    pub default_query: Option<Query>,
+    pub optional: bool,
     pub argument_type: ArgumentType,
     pub multiple: bool,
     pub gui_info: ArgumentGUIInfo,
@@ -190,6 +239,8 @@ impl ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
             default_value: None,
+            default_query: None,
+            optional: false,
             argument_type: ArgumentType::Any,
             multiple: false,
             gui_info: ArgumentGUIInfo::TextField(40),
@@ -200,6 +251,8 @@ impl ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
             default_value: None,
+            default_query: None,
+            optional: false,
             argument_type: ArgumentType::String,
             multiple: false,
             gui_info: ArgumentGUIInfo::TextField(40),
@@ -210,6 +263,8 @@ impl ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
             default_value: if option {Some("".to_string())} else {None},
+            default_query: None,
+            optional: false,
             argument_type: if option {ArgumentType::IntegerOption} else {ArgumentType::Integer},
             multiple: false,
             gui_info: ArgumentGUIInfo::IntegerField,
@@ -220,6 +275,8 @@ impl ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
             default_value: if option {Some("".to_string())} else {None},
+            default_query: None,
+            optional: false,
             argument_type: if option {ArgumentType::FloatOption} else {ArgumentType::Float},
             multiple: false,
             gui_info: ArgumentGUIInfo::FloatField,
@@ -230,21 +287,35 @@ impl ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
             default_value: None,
+            default_query: None,
+            optional: false,
             argument_type: ArgumentType::Boolean,
             multiple: false,
             gui_info: ArgumentGUIInfo::Checkbox,
         }
     }
+    pub fn with_default_none(&mut self) -> &mut Self {
+        self.default_value = None;
+        self.default_query = None;
+        self.optional = true;
+        self
+    }
     pub fn with_default_value(&mut self, value: &str) -> &mut Self {
         self.default_value = Some(value.to_string());
+        self.default_query = None;
+        self.optional = true;
         self
     }
     pub fn true_by_default(&mut self) -> &mut Self {
         self.default_value = Some("t".to_string());
+        self.default_query = None;
+        self.optional = true;
         self
     }
     pub fn false_by_default(&mut self) -> &mut Self {
         self.default_value = Some("f".to_string());
+        self.default_query = None;
+        self.optional = true;
         self
     }
 

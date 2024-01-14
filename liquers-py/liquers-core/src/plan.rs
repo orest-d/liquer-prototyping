@@ -4,7 +4,7 @@ use itertools::Itertools;
 use nom::Err;
 
 use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, ResourceName, Key};
-use crate::command_registry::{CommandMetadata, ArgumentInfo, ArgumentType};
+use crate::command_registry::{CommandMetadata, ArgumentInfo, ArgumentType, EnumArgumentType};
 use crate::value::ValueInterface;
 use crate::error::Error;
 
@@ -115,12 +115,15 @@ impl <'a, V:ValueInterface> ParametersResolver<'a, V>{
                 self.parameter_number += 1;
                 Ok(None)
             },
-            None => if arginfo.default_value.is_none(){
-                Err(Error::missing_argument(self.arginfo_number, &arginfo.name, &self.action_request.position))
-            }
-            else{
-                self.parameter_number += 1;
-                Ok(arginfo.default_value.to_owned())
+            None =>
+            match (&arginfo.default_value, &arginfo.default_query){
+                (Some(v), None) => {Ok(Some(v.to_owned()))},
+                (None, Some(q)) => {
+                    self.resolved_parameters.links.push((self.resolved_parameters.parameters.len(), q.clone()));
+                    Ok(None)
+                },
+                (None, None) => {if arginfo.optional {Ok(None)}else{Err(Error::missing_argument(self.arginfo_number, &arginfo.name, &self.action_request.position))}},
+                (Some(_), Some(_)) => Err(Error::NotSupported{message:"Default value and default query are not supported".into()}),
             },
         }
     }
@@ -134,71 +137,25 @@ impl <'a, V:ValueInterface> ParametersResolver<'a, V>{
             (ArgumentType::Float, Some(x)) => V::from_f64_str(&x),
             (ArgumentType::FloatOption, Some(x)) => if x==""{Ok(V::none())}else{V::from_f64_str(&x)},
             (ArgumentType::Boolean, Some(x)) => V::from_bool_str(&x),
-            (ArgumentType::Enum(_), Some(x)) => Err(Error::NotSupported{message:"Enum not supported".into()}),
+            (ArgumentType::Enum(e), Some(x)) => {
+                if let Some(x) = e.name_to_value(&x){
+                    match e.value_type{
+                        EnumArgumentType::String => Ok(V::from_string(x)),
+                        EnumArgumentType::Integer => V::from_i64_str(&x),
+                        EnumArgumentType::IntegerOption => if x==""{Ok(V::none())}else{V::from_i64_str(&x)},
+                        EnumArgumentType::Float => V::from_f64_str(&x),
+                        EnumArgumentType::FloatOption => if x==""{Ok(V::none())}else{V::from_f64_str(&x)},
+                        EnumArgumentType::Boolean => V::from_bool_str(&x),
+                    }
+                }
+                else{
+                    Err(Error::conversion_error(x, &e.name))
+                }
+            },
             (ArgumentType::Any, Some(x)) => Ok(V::from_string(x)),
             (ArgumentType::None, Some(_)) => Err(Error::NotSupported{message:"None not supported".into()}),
         }
     }
-}
-fn resolve_parameters<V:ValueInterface>(command_metadata:&CommandMetadata, action:&ActionRequest) -> Result<Vec<V>, Error>{
-    let mut resolved_parameters:Vec<V> = Vec::new();
-    let mut parameter_number:usize = 0;
-    let pop_parameter = |arginfo:&ArgumentInfo|->Result<&ActionParameter, Error>{
-        let p = action.parameters.get(parameter_number)
-        .ok_or(Error::missing_argument(parameter_number, &arginfo.name, &action.position));
-        parameter_number += 1;
-        p
-    };
-
-    /*
-    let resolve_argument = |arginfo:&ArgumentInfo, value:V|{
-        let mut buffer = Vec::new();
-        match arginfo.argument_type{
-            ArgumentType::String => {
-                if arginfo.optional{
-                    if let Some(arg) = pop_parameter(arginfo){
-                        resolved_parameters.push(arg);
-                    }
-                    else{
-                        resolved_parameters.push(V::from_string(arginfo.default_value.to_owned()));
-                    }
-                }
-                else{
-                    resolved_parameters.push(pop_parameter(arginfo)?);
-                }
-            },
-            ArgumentType::Integer => {
-                if arginfo.optional{
-                    if let Some(arg) = pop_parameter(arginfo)?{
-                        resolved_parameters.push(V::from_i64(arg.parse::<i64>().map_err(|e|Error::ConversionError{message:format!("Cannot convert {} to integer", arg)})?));
-                    }
-                    else{
-                        resolved_parameters.push(V::from_integer(arginfo.default_value.parse::<i64>()?));
-                    }
-                }
-                else{
-                    resolved_parameters.push(pop_parameter(arginfo)?);
-                }
-            },
-            },
-            ArgumentType::IntegerOption => todo!(),
-            ArgumentType::Float => todo!(),
-            ArgumentType::FloatOption => todo!(),
-            ArgumentType::Boolean => todo!(),
-            ArgumentType::Enum(_) => todo!(),
-            ArgumentType::Any => todo!(),
-            ArgumentType::None => todo!(),
-        }
-
-    };
-
-    for (i, arginfo) in command_metadata.arguments.iter().enumerate() {
-        if arginfo.injected {
-            continue;
-        }
-    } 
-    */
-    Ok(resolved_parameters)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

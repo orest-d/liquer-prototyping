@@ -1,6 +1,7 @@
 use crate::query::Position;
 use std::error;
 use std::fmt;
+use std::fmt::Display;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Error {
@@ -21,6 +22,11 @@ impl Error{
         Error::ParameterError{
             message: format!("Missing argument #{}:{}", i, name),
             position: position.clone(),
+        }
+    }
+    pub fn conversion_error<W:Display,T:Display>(what:W,to:T) -> Self {
+        Error::ConversionError {
+            message: format!("Can't convert '{}' to {}", what, to)
         }
     }
 }
