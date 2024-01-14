@@ -16,6 +16,16 @@ pub enum Error {
     NotSupported { message: String },
 }
 
+impl Error{
+    pub fn missing_argument(i:usize, name:&str, position:&Position) -> Self{
+        Error::ParameterError{
+            message: format!("Missing argument #{}:{}", i, name),
+            position: position.clone(),
+        }
+    }
+}
+
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

@@ -176,14 +176,12 @@ impl Default for ArgumentGUIInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ArgumentInfo {
-    name: String,
-    label: String,
-    default_value: Option<String>,
-    optional: bool,
-    argument_type: ArgumentType,
-    multiple: bool,
-    injected: bool,
-    gui_info: ArgumentGUIInfo,
+    pub name: String,
+    pub label: String,
+    pub default_value: Option<String>,
+    pub argument_type: ArgumentType,
+    pub multiple: bool,
+    pub gui_info: ArgumentGUIInfo,
 }
 
 impl ArgumentInfo {
@@ -191,11 +189,9 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            optional: false,
             default_value: None,
             argument_type: ArgumentType::Any,
             multiple: false,
-            injected: false,
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
@@ -203,11 +199,9 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            optional: false,
             default_value: None,
             argument_type: ArgumentType::String,
             multiple: false,
-            injected: false,
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
@@ -215,11 +209,9 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            optional: option,
             default_value: if option {Some("".to_string())} else {None},
             argument_type: if option {ArgumentType::IntegerOption} else {ArgumentType::Integer},
             multiple: false,
-            injected: false,
             gui_info: ArgumentGUIInfo::IntegerField,
         }
     }
@@ -227,11 +219,9 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            optional: option,
             default_value: if option {Some("".to_string())} else {None},
             argument_type: if option {ArgumentType::FloatOption} else {ArgumentType::Float},
             multiple: false,
-            injected: false,
             gui_info: ArgumentGUIInfo::FloatField,
         }
     }
@@ -239,27 +229,22 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            optional: false,
             default_value: None,
             argument_type: ArgumentType::Boolean,
             multiple: false,
-            injected: false,
             gui_info: ArgumentGUIInfo::Checkbox,
         }
     }
     pub fn with_default_value(&mut self, value: &str) -> &mut Self {
         self.default_value = Some(value.to_string());
-        self.optional = true;
         self
     }
     pub fn true_by_default(&mut self) -> &mut Self {
         self.default_value = Some("t".to_string());
-        self.optional = true;
         self
     }
     pub fn false_by_default(&mut self) -> &mut Self {
         self.default_value = Some("f".to_string());
-        self.optional = true;
         self
     }
 

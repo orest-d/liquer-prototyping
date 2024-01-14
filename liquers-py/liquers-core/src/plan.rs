@@ -1,8 +1,12 @@
-use std::fmt::Display;
+use std::fmt::{Display};
 
 use itertools::Itertools;
+use nom::Err;
 
 use crate::query::{ActionParameter, ActionRequest, Query, QuerySegment, ResourceName, Key};
+use crate::command_registry::{CommandMetadata, ArgumentInfo, ArgumentType};
+use crate::value::ValueInterface;
+use crate::error::Error;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 
@@ -64,6 +68,137 @@ impl Display for Step {
             Step::Error(s) => write!(f, "ERROR           {s}"),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResolvedParameters<V:ValueInterface>{
+    pub parameters:Vec<V>,
+    pub links:Vec<(usize, Query)>
+}
+
+impl<V:ValueInterface> ResolvedParameters<V>{
+    pub fn new() -> Self{
+        ResolvedParameters{
+            parameters:Vec::new(),
+            links:Vec::new(),
+        }
+    }
+}
+
+struct ParametersResolver<'a, V:ValueInterface>{
+    command_metadata:&'a CommandMetadata,
+    action_request:&'a ActionRequest,
+    resolved_parameters:ResolvedParameters<V>,
+    parameter_number:usize,
+    arginfo_number:usize,
+}
+
+impl <'a, V:ValueInterface> ParametersResolver<'a, V>{
+    fn new(command_metadata:&'a CommandMetadata, action_request:&'a ActionRequest) -> Self{
+        ParametersResolver{
+            command_metadata,
+            action_request,
+            resolved_parameters:ResolvedParameters::new(),
+            parameter_number:0,
+            arginfo_number:0,
+        }
+    }
+    fn get(self)->ResolvedParameters<V>{
+        self.resolved_parameters
+    }
+
+    fn pop_action_parameter(&mut self, arginfo:&ArgumentInfo) -> Result<Option<String>, Error>{
+        match self.action_request.parameters.get(self.parameter_number){
+            Some(ActionParameter::String(v,_)) => {self.parameter_number += 1;Ok(Some(v.to_owned()))},
+            Some(ActionParameter::Link(q,_)) => {
+                self.resolved_parameters.links.push((self.resolved_parameters.parameters.len(), q.clone()));
+                self.parameter_number += 1;
+                Ok(None)
+            },
+            None => if arginfo.default_value.is_none(){
+                Err(Error::missing_argument(self.arginfo_number, &arginfo.name, &self.action_request.position))
+            }
+            else{
+                self.parameter_number += 1;
+                Ok(arginfo.default_value.to_owned())
+            },
+        }
+    }
+
+    fn pop_value(&mut self, arginfo:&ArgumentInfo) -> Result<V, Error>{
+        match (&arginfo.argument_type, self.pop_action_parameter(arginfo)?){
+            (_, None) => Ok(V::none()),
+            (ArgumentType::String, Some(x)) => Ok(V::from_string(x)),
+            (ArgumentType::Integer, Some(x)) => V::from_i64_str(&x),
+            (ArgumentType::IntegerOption, Some(x)) => if x==""{Ok(V::none())}else{V::from_i64_str(&x)},
+            (ArgumentType::Float, Some(x)) => V::from_f64_str(&x),
+            (ArgumentType::FloatOption, Some(x)) => if x==""{Ok(V::none())}else{V::from_f64_str(&x)},
+            (ArgumentType::Boolean, Some(x)) => V::from_bool_str(&x),
+            (ArgumentType::Enum(_), Some(x)) => Err(Error::NotSupported{message:"Enum not supported".into()}),
+            (ArgumentType::Any, Some(x)) => Ok(V::from_string(x)),
+            (ArgumentType::None, Some(_)) => Err(Error::NotSupported{message:"None not supported".into()}),
+        }
+    }
+}
+fn resolve_parameters<V:ValueInterface>(command_metadata:&CommandMetadata, action:&ActionRequest) -> Result<Vec<V>, Error>{
+    let mut resolved_parameters:Vec<V> = Vec::new();
+    let mut parameter_number:usize = 0;
+    let pop_parameter = |arginfo:&ArgumentInfo|->Result<&ActionParameter, Error>{
+        let p = action.parameters.get(parameter_number)
+        .ok_or(Error::missing_argument(parameter_number, &arginfo.name, &action.position));
+        parameter_number += 1;
+        p
+    };
+
+    /*
+    let resolve_argument = |arginfo:&ArgumentInfo, value:V|{
+        let mut buffer = Vec::new();
+        match arginfo.argument_type{
+            ArgumentType::String => {
+                if arginfo.optional{
+                    if let Some(arg) = pop_parameter(arginfo){
+                        resolved_parameters.push(arg);
+                    }
+                    else{
+                        resolved_parameters.push(V::from_string(arginfo.default_value.to_owned()));
+                    }
+                }
+                else{
+                    resolved_parameters.push(pop_parameter(arginfo)?);
+                }
+            },
+            ArgumentType::Integer => {
+                if arginfo.optional{
+                    if let Some(arg) = pop_parameter(arginfo)?{
+                        resolved_parameters.push(V::from_i64(arg.parse::<i64>().map_err(|e|Error::ConversionError{message:format!("Cannot convert {} to integer", arg)})?));
+                    }
+                    else{
+                        resolved_parameters.push(V::from_integer(arginfo.default_value.parse::<i64>()?));
+                    }
+                }
+                else{
+                    resolved_parameters.push(pop_parameter(arginfo)?);
+                }
+            },
+            },
+            ArgumentType::IntegerOption => todo!(),
+            ArgumentType::Float => todo!(),
+            ArgumentType::FloatOption => todo!(),
+            ArgumentType::Boolean => todo!(),
+            ArgumentType::Enum(_) => todo!(),
+            ArgumentType::Any => todo!(),
+            ArgumentType::None => todo!(),
+        }
+
+    };
+
+    for (i, arginfo) in command_metadata.arguments.iter().enumerate() {
+        if arginfo.injected {
+            continue;
+        }
+    } 
+    */
+    Ok(resolved_parameters)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

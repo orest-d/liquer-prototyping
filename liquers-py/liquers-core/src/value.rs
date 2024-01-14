@@ -29,6 +29,61 @@ pub trait ValueInterface: Clone {
     /// From string
     fn new(txt: &str) -> Self;
 
+    /// From string
+    fn from_string(txt: String) -> Self;
+
+    /// From integer
+    fn from_i32(n: i32) -> Self;
+
+    /// From integer string
+    fn from_i32_str(n: &str) -> Result<Self, Error>{
+        n.parse::<i32>().map(|x| Self::from_i32(x)).map_err(|_| Error::ConversionError{
+            message: format!("Can't convert '{}' to i32", n)
+        })
+    }
+
+    /// From integer
+    fn from_i64(n: i64) -> Self;
+
+    /// From integer string
+    fn from_i64_str(n: &str) -> Result<Self, Error>{
+        n.parse::<i64>().map(|x| Self::from_i64(x)).map_err(|_| Error::ConversionError{
+            message: format!("Can't convert '{}' to i64", n)
+        })
+    }
+
+    /// From float
+    fn from_f64(n: f64) -> Self;
+
+    /// From float string
+    fn from_f64_str(n: &str) -> Result<Self, Error>{
+        n.parse::<f64>().map(|x| Self::from_f64(x)).map_err(|_| Error::ConversionError{
+            message: format!("Can't convert '{}' to f64", n)
+        })
+    }
+
+    /// From boolean
+    fn from_bool(b: bool) -> Self;
+
+    /// From boolean string
+    fn from_bool_str(b: &str) -> Result<Self, Error>{
+        match b.to_lowercase().as_str() {
+            "true" => Ok(Self::from_bool(true)),
+            "t" => Ok(Self::from_bool(true)),
+            "yes" => Ok(Self::from_bool(true)),
+            "y" => Ok(Self::from_bool(true)),
+            "1" => Ok(Self::from_bool(true)),
+            "false" => Ok(Self::from_bool(false)),
+            "f" => Ok(Self::from_bool(false)),
+            "no" => Ok(Self::from_bool(false)),
+            "n" => Ok(Self::from_bool(false)),
+            "0" => Ok(Self::from_bool(false)),
+            _ => Err(Error::ConversionError{
+                message: format!("Can't convert '{}' to bool", b)
+            })
+        }
+    }
+
     /// Try to get a string out
     fn try_into_string(&self) -> Result<String, Error>;
 
@@ -213,6 +268,26 @@ impl ValueInterface for Value {
             Value::Object(_) => "application/json".into(),
             Value::Bytes(_) => "application/octet-stream".into(),
         }
+    }
+
+    fn from_string(txt: String) -> Self {
+        Value::Text(txt)
+    }
+
+    fn from_i32(n: i32) -> Self {
+        Value::I32(n)
+    }
+
+    fn from_i64(n: i64) -> Self {
+        Value::I64(n)
+    }
+
+    fn from_f64(n: f64) -> Self {
+        Value::F64(n)
+    }
+
+    fn from_bool(b: bool) -> Self {
+        Value::Bool(b)
     }
 }
 
