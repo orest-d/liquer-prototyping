@@ -84,8 +84,6 @@ impl<V: ValueInterface> ResolvedParameters<V> {
 struct PlanBuilder<'c, V: ValueInterface> {
     query: Query,
     command_registry: &'c CommandRegistry,
-    command_metadata: CommandMetadata,
-    action_request: ActionRequest,
     resolved_parameters: ResolvedParameters<V>,
     parameter_number: usize,
     arginfo_number: usize,
@@ -97,8 +95,6 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
         PlanBuilder {
             query,
             command_registry,
-            command_metadata: CommandMetadata::default(),
-            action_request: ActionRequest::default(),
             resolved_parameters: ResolvedParameters::new(),
             parameter_number: 0,
             arginfo_number: 0,
@@ -135,25 +131,24 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
         Ok(namespaces)
     }
 
-    fn get_command_metadata(&mut self, query: &Query, action_request:&ActionRequest) -> Result<(), Error> {
+    fn get_command_metadata(&mut self, query: &Query, action_request:&ActionRequest) -> Result<CommandMetadata, Error> {
         let namespaces = self.get_namespaces(query)?;
         let realm = query.last_transform_query_name().unwrap_or("".to_string());
         if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
             &realm,
             &namespaces,
-            &self.action_request.name,
+            &action_request.name,
         ) {
-            self.command_metadata = command_metadata.clone();
+            Ok(command_metadata.clone())
         } else {
-            return Err(Error::ActionNotRegistered {
+            Err(Error::ActionNotRegistered {
                 message: format!(
                     "Action '{}' not registered in namespaces {}",
-                    self.action_request.name,
+                    action_request.name,
                     namespaces.iter().map(|ns| format!("'{}'",ns)).join(", ")
                 ),
-            });
+            })
         }
-        Ok(())
     }
 
     fn process_resource_query(&mut self, rqs:&ResourceQuerySegment)->Result<(),Error>{
@@ -161,15 +156,31 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
         Ok(())
     }
 
-    fn process_command(&mut self, command_metadata:&CommandMetadata, action_request:&ActionRequest){
-
+    fn process_action(&mut self, query:&Query, action_request:&ActionRequest)->Result<(),Error>{
+        let command_metadata = self.get_command_metadata(query, action_request)?;
+        self.get_parameters(&command_metadata, action_request)?;
+        Ok(())
     }
+
     fn process_query(&mut self, query:&Query) -> Result<(), Error> {
-        if query.is_empty() {
+        if query.is_empty() || query.is_ns(){
             return Ok(());
         }
         if let Some(rq) = query.resource_query(){
             self.process_resource_query(&rq)?;
+            return Ok(());
+        }
+        if let Some(transform) = query.transform_query(){
+            if let Some(action) = transform.action(){
+                let mut query= query.clone();
+                query.segments=Vec::new();
+                self.process_action(&query, &action)?;
+                return Ok(());
+            }
+            if transform.is_filename(){
+                self.plan.steps.push(Step::Filename(transform.filename.unwrap().clone()));
+                return Ok(());
+            }
             return Ok(());
         }
 
@@ -184,8 +195,8 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
         Ok(())
     }
 
-    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo) -> Result<Option<String>, Error> {
-        match self.action_request.parameters.get(self.parameter_number) {
+    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Option<String>, Error> {
+        match action_request.parameters.get(self.parameter_number) {
             Some(ActionParameter::String(v, _)) => {
                 self.parameter_number += 1;
                 Ok(Some(v.to_owned()))
@@ -212,7 +223,7 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
                         Err(Error::missing_argument(
                             self.arginfo_number,
                             &arginfo.name,
-                            &self.action_request.position,
+                            &action_request.position,
                         ))
                     }
                 }
@@ -223,8 +234,8 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
         }
     }
 
-    fn pop_value(&mut self, arginfo: &ArgumentInfo) -> Result<V, Error> {
-        match (&arginfo.argument_type, self.pop_action_parameter(arginfo)?) {
+    fn pop_value(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<V, Error> {
+        match (&arginfo.argument_type, self.pop_action_parameter(arginfo, action_request)?) {
             (_, None) => Ok(V::none()),
             (ArgumentType::String, Some(x)) => Ok(V::from_string(x)),
             (ArgumentType::Integer, Some(x)) => V::from_i64_str(&x),
@@ -276,12 +287,13 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
             }),
         }
     }
-    fn get_parameters(&mut self, command_metadata:&CommandMetadata) -> Result<(), Error> {
+    fn get_parameters(&mut self, command_metadata:&CommandMetadata, action_request:&ActionRequest) -> Result<(), Error> {
         self.arginfo_number = 0;
+        self.parameter_number = 0;
         self.resolved_parameters = ResolvedParameters::new();
         for (i, a) in command_metadata.arguments.iter().enumerate(){
             self.arginfo_number = i;
-            let value = self.pop_value(a)?;
+            let value = self.pop_value(a, action_request)?;
             self.resolved_parameters
                 .parameters
                 .push(value);
