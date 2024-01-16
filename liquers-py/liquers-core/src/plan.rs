@@ -2,24 +2,29 @@ use std::fmt::Display;
 
 use itertools::Itertools;
 use nom::Err;
+use serde_json::Value;
 
 use crate::command_registry::{
-    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, EnumArgumentType,
+    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, EnumArgumentType, DefaultValue,
 };
 use crate::error::Error;
-use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName, ResourceQuerySegment};
+use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName, ResourceQuerySegment, Position};
 use crate::value::ValueInterface;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-
 pub enum Step {
     GetResource(Key),
     GetResourceMetadata(Key),
+    GetNamedResource(Key),
+    GetNamedResourceMetadata(Key),
     Evaluate(Query),
-    ApplyAction {
-        ns: Option<Vec<ActionParameter>>,
-        action: ActionRequest,
-    },
+    Action{
+        realm:String,
+        ns:String,
+        action_name:String,
+        position:Position,
+        parameters: ResolvedParameters
+    },   
     Filename(ResourceName),
     Info(String),
     Warning(String),
@@ -42,55 +47,36 @@ impl Step {
     }
 }
 
-impl Display for Step {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Step::GetResource(s) => write!(f, "GET RES         {}", s.encode()),
-            Step::GetResourceMetadata(s) => {
-                write!(f, "GET RES META    {}", s.encode())
-            }
-            Step::Evaluate(s) => write!(f, "EVALUATE        {}", s.encode()),
-            Step::ApplyAction { ns, action } => write!(
-                f,
-                "APPLY ACTION    ({}): {}",
-                ns.as_ref()
-                    .map_or("root".into(), |ap| ap.iter().map(|x| x.encode()).join(",")),
-                action.encode()
-            ),
-            Step::Filename(s) => write!(f, "FILENAME        {}", s.encode()),
-            Step::Info(s) => write!(f, "INFO            {s}"),
-            Step::Warning(s) => write!(f, "WARNING         {s}"),
-            Step::Error(s) => write!(f, "ERROR           {s}"),
-            Step::Plan(p) => write!(f, "PLAN            {p}"),
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ResolvedParameters<V: ValueInterface> {
-    pub parameters: Vec<V>,
+pub struct ResolvedParameters {
+    pub parameters: Vec<Value>,
     pub links: Vec<(usize, Query)>,
 }
 
-impl<V: ValueInterface> ResolvedParameters<V> {
+impl ResolvedParameters {
     pub fn new() -> Self {
         ResolvedParameters {
             parameters: Vec::new(),
             links: Vec::new(),
         }
     }
+    pub fn clear(&mut self) {
+        self.parameters.clear();
+        self.links.clear();
+    }
 }
 
-struct PlanBuilder<'c, V: ValueInterface> {
+struct PlanBuilder<'c> {
     query: Query,
     command_registry: &'c CommandRegistry,
-    resolved_parameters: ResolvedParameters<V>,
+    resolved_parameters: ResolvedParameters,
     parameter_number: usize,
     arginfo_number: usize,
     plan: Plan,
 }
 
-impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
+impl<'c> PlanBuilder<'c> {
     fn new(query: Query, command_registry: &'c CommandRegistry) -> Self {
         PlanBuilder {
             query,
@@ -159,6 +145,13 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
     fn process_action(&mut self, query:&Query, action_request:&ActionRequest)->Result<(),Error>{
         let command_metadata = self.get_command_metadata(query, action_request)?;
         self.get_parameters(&command_metadata, action_request)?;
+        self.plan.steps.push(Step::Action{
+            realm:command_metadata.realm.clone(),
+            ns:command_metadata.namespace.clone(),
+            action_name:action_request.name.clone(),
+            position:action_request.position.clone(),
+            parameters:self.resolved_parameters.clone()
+        });
         Ok(())
     }
 
@@ -191,97 +184,86 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
                 self.process_query(p)?;
             }
         }
-
+        if let Some(qs) = q {
+            match qs {
+                QuerySegment::Resource(ref rqs) => {
+                    self.process_resource_query(rqs)?;
+                    return Ok(());
+                },
+                QuerySegment::Transform(ref tqs) => {
+                    if tqs.is_empty() || tqs.is_ns(){
+                        return Ok(());
+                    }
+                    if let Some(action) = tqs.action(){
+                        self.process_action(&query, &action)?;
+                        return Ok(());
+                    }
+                    if tqs.is_filename(){
+                        self.plan.steps.push(Step::Filename(tqs.filename.as_ref().unwrap().clone()));
+                        return Ok(());
+                    }
+                    return Err(Error::NotSupported {
+                        message: format!("Unexpected query segment '{}'", qs.encode()),
+                    });
+                },
+            }
+        }
         Ok(())
     }
 
-    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Option<String>, Error> {
+    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Option<Value>, Error> {
         match action_request.parameters.get(self.parameter_number) {
             Some(ActionParameter::String(v, _)) => {
                 self.parameter_number += 1;
-                Ok(Some(v.to_owned()))
-            }
+                Ok(Some(Value::String(v.to_owned())))
+            },
             Some(ActionParameter::Link(q, _)) => {
                 self.resolved_parameters
                     .links
                     .push((self.resolved_parameters.parameters.len(), q.clone()));
                 self.parameter_number += 1;
                 Ok(None)
-            }
-            None => match (&arginfo.default_value, &arginfo.default_query) {
-                (Some(v), None) => Ok(Some(v.to_owned())),
-                (None, Some(q)) => {
-                    self.resolved_parameters
-                        .links
-                        .push((self.resolved_parameters.parameters.len(), q.clone()));
-                    Ok(None)
-                }
-                (None, None) => {
-                    if arginfo.optional {
+            },
+            None => {
+                match &arginfo.default {
+                    DefaultValue::Value(v) => {
+                        Ok(Some(v.clone()))
+                    },
+                    DefaultValue::Query(q) => {
+                        self.resolved_parameters
+                            .links
+                            .push((self.resolved_parameters.parameters.len(), q.clone()));
                         Ok(None)
-                    } else {
+                    },
+                    DefaultValue::NoDefault => {
                         Err(Error::missing_argument(
                             self.arginfo_number,
                             &arginfo.name,
                             &action_request.position,
                         ))
-                    }
+                    },
                 }
-                (Some(_), Some(_)) => Err(Error::NotSupported {
-                    message: "Default value and default query are not supported".into(),
-                }),
-            },
+            }
         }
     }
 
-    fn pop_value(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<V, Error> {
+    fn pop_value(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Value, Error> {
         match (&arginfo.argument_type, self.pop_action_parameter(arginfo, action_request)?) {
-            (_, None) => Ok(V::none()),
-            (ArgumentType::String, Some(x)) => Ok(V::from_string(x)),
-            (ArgumentType::Integer, Some(x)) => V::from_i64_str(&x),
-            (ArgumentType::IntegerOption, Some(x)) => {
-                if x == "" {
-                    Ok(V::none())
-                } else {
-                    V::from_i64_str(&x)
-                }
-            }
-            (ArgumentType::Float, Some(x)) => V::from_f64_str(&x),
-            (ArgumentType::FloatOption, Some(x)) => {
-                if x == "" {
-                    Ok(V::none())
-                } else {
-                    V::from_f64_str(&x)
-                }
-            }
-            (ArgumentType::Boolean, Some(x)) => V::from_bool_str(&x),
+            (_, None) => Ok(Value::Null),
+            (ArgumentType::String, Some(x)) => Ok(Value::String(x.to_string())),
+            (ArgumentType::Integer, Some(x)) => Ok(x),
+            (ArgumentType::IntegerOption, Some(x)) => Ok(x),
+            (ArgumentType::Float, Some(x)) => Ok(x),
+            (ArgumentType::FloatOption, Some(x)) => Ok(x),
+            (ArgumentType::Boolean, Some(x)) => Ok(x),
             (ArgumentType::Enum(e), Some(x)) => {
-                if let Some(x) = e.name_to_value(&x) {
-                    match e.value_type {
-                        EnumArgumentType::String => Ok(V::from_string(x)),
-                        EnumArgumentType::Integer => V::from_i64_str(&x),
-                        EnumArgumentType::IntegerOption => {
-                            if x == "" {
-                                Ok(V::none())
-                            } else {
-                                V::from_i64_str(&x)
-                            }
-                        }
-                        EnumArgumentType::Float => V::from_f64_str(&x),
-                        EnumArgumentType::FloatOption => {
-                            if x == "" {
-                                Ok(V::none())
-                            } else {
-                                V::from_f64_str(&x)
-                            }
-                        }
-                        EnumArgumentType::Boolean => V::from_bool_str(&x),
-                    }
+                if let Some(xx) = e.name_to_value(x.to_string()) {
+                    Ok(xx)
                 } else {
                     Err(Error::conversion_error(x, &e.name))
                 }
             }
-            (ArgumentType::Any, Some(x)) => Ok(V::from_string(x)),
+            (ArgumentType::Any, Some(x)) => Ok(x),
             (ArgumentType::None, Some(_)) => Err(Error::NotSupported {
                 message: "None not supported".into(),
             }),
@@ -329,17 +311,6 @@ impl Plan {
     }
     fn has_warning(&self) -> bool {
         self.steps.iter().any(|x| x.is_warning())
-    }
-}
-
-impl Display for Plan {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Plan for {}:\n{}",
-            self.query.encode(),
-            self.steps.iter().map(|x| format!("  {x}")).join("\n")
-        )
     }
 }
 

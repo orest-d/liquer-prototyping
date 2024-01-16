@@ -1,4 +1,7 @@
-use crate::{error::Error, query::{ActionParameter, Query}, state};
+use crate::error::Error;
+use crate::query::{ActionParameter, Query};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// A structure holding a description of an identified issue with a command registry
 /// Issue can be either a warning or an error (when is_error is true)
@@ -33,7 +36,7 @@ impl CommandRegistryIssue {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgumentAlternative {
     pub name: String,
-    pub value: String,
+    pub value: Value,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -69,10 +72,10 @@ impl EnumArgument {
             value_type: EnumArgumentType::String,
         }
     }
-    pub fn with_value(&mut self, name: &str, value: &str) -> &mut Self {
+    pub fn with_value(&mut self, name: &str, value: Value) -> &mut Self {
         self.values.push(EnumArgumentAlternative {
             name: name.to_string(),
-            value: value.to_string(),
+            value
         });
         self
     }
@@ -84,14 +87,14 @@ impl EnumArgument {
         self.others_allowed = true;
         self
     }
-    pub fn name_to_value(&self, value:&str)->Option<String>{
+    pub fn name_to_value(&self, name:String)->Option<Value>{
         for alternative in &self.values {
-            if alternative.name == value {
+            if alternative.name == name {
                 return Some(alternative.value.clone());
             }
         }
         if self.others_allowed{
-            return Some(value.to_string());
+            return Some(Value::String(name));
         }
         None
     }
@@ -125,120 +128,6 @@ impl ArgumentType {
             _ => false,
         }
     }
-    pub fn verify(&self, parameter: &ActionParameter) -> Result<(), Error> {
-        if let Some(value) = parameter.string_value() {
-            match self {
-                ArgumentType::String => Ok(()),
-                ArgumentType::Integer => {
-                    if value.parse::<i64>().is_ok() {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "Integer expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::IntegerOption => {
-                    if value == "" {
-                        Ok(())
-                    } else if value.parse::<i64>().is_ok() {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "Integer (optional) expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::Float => {
-                    if value.parse::<f64>().is_ok() {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "Float expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::FloatOption => {
-                    if value == "" {
-                        Ok(())
-                    } else if value.parse::<f64>().is_ok() {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "Float (optional) expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::Boolean => {
-                    let value = value.to_lowercase();
-                    if value == "true"
-                        || value == "false"
-                        || value == "t"
-                        || value == "f"
-                        || value == "1"
-                        || value == "0"
-                        || value == "yes"
-                        || value == "no"
-                        || value == "y"
-                        || value == "n"
-                        || value == ""
-                    {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "Boolean expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::Enum(e) => {
-                    let mut found = false;
-                    if e.others_allowed{
-                        return Ok(());
-                    }
-                    for alternative in &e.values {
-                        if alternative.value == value {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if found {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: format!(
-                                "Enum {} value expected; one of {}",
-                                e.name,
-                                e.values
-                                    .iter()
-                                    .map(|x| x.value.clone())
-                                    .collect::<Vec<String>>()
-                                    .join(", ")
-                            ),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-                ArgumentType::Any => Ok(()),
-                ArgumentType::None => {
-                    if value == "" {
-                        Ok(())
-                    } else {
-                        Err(Error::ParameterError {
-                            message: "None (epmty parameter) expected".to_string(),
-                            position: parameter.position().clone(),
-                        })
-                    }
-                }
-            }
-        } else {
-            Ok(())
-        }
-    }
 }
 
 impl Default for ArgumentType {
@@ -264,14 +153,54 @@ impl Default for ArgumentGUIInfo {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DefaultValue{
+    Value(Value),
+    Query(Query),
+    NoDefault
+}
+
+impl DefaultValue{
+    fn new()->Self{
+        DefaultValue::NoDefault
+    }
+    fn null()->Self{
+        DefaultValue::Value(Value::Null)
+    }
+    fn is_null(&self)->bool{
+        match self{
+            DefaultValue::Value(value)=>value.is_null(),
+            _=>false
+        }
+    }
+    fn from_value(value:Value)->Self{
+        DefaultValue::Value(value)
+    }
+    fn from_query(query:Query)->Self{
+        DefaultValue::Query(query)
+    }
+    fn from_string(value:&str)->Self{
+        DefaultValue::Value(Value::String(value.to_string()))
+    }
+    fn from_integer(value:i64)->Self{
+        DefaultValue::Value(Value::Number(serde_json::Number::from(value)))
+    }
+    fn from_float(value:f64)->Self{
+        DefaultValue::Value(Value::Number(serde_json::Number::from_f64(value).unwrap()))
+    }
+}
+
+impl Default for DefaultValue{
+    fn default() -> Self {
+        DefaultValue::NoDefault
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ArgumentInfo {
     pub name: String,
     pub label: String,
-    pub default_value: Option<String>,
-    pub default_query: Option<Query>,
-    pub optional: bool,
+    pub default: DefaultValue,
     pub argument_type: ArgumentType,
     pub multiple: bool,
     pub gui_info: ArgumentGUIInfo,
@@ -282,9 +211,7 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default_value: None,
-            default_query: None,
-            optional: false,
+            default: DefaultValue::NoDefault,
             argument_type: ArgumentType::Any,
             multiple: false,
             gui_info: ArgumentGUIInfo::TextField(40),
@@ -292,29 +219,24 @@ impl ArgumentInfo {
     }
     fn check(&self, realm:&str, namespace:&str, name:&str) -> Vec<CommandRegistryIssue> {
         let mut issues = Vec::new();
-        if let Some(default_value) = &self.default_value {
-            if let Some(default_query) = &self.default_query {
-                issues.push(CommandRegistryIssue::warning(
-                    realm,
-                    namespace,
-                    name,
-                    format!(
-                        "Argument {} has both default value and default query",
-                        self.name
-                    ),
-                ));
-            }
-        }
         issues
     }
 
+    pub fn argument(name: &str) -> Self {
+        ArgumentInfo {
+            name: name.to_string(),
+            label: name.replace("_", " ").to_string(),
+            default: DefaultValue::NoDefault,
+            argument_type: ArgumentType::Any,
+            multiple: false,
+            gui_info: ArgumentGUIInfo::TextField(40),
+        }
+    }
     pub fn string_argument(name: &str) -> Self {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default_value: None,
-            default_query: None,
-            optional: false,
+            default: DefaultValue::NoDefault,
             argument_type: ArgumentType::String,
             multiple: false,
             gui_info: ArgumentGUIInfo::TextField(40),
@@ -324,9 +246,7 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default_value: if option {Some("".to_string())} else {None},
-            default_query: None,
-            optional: false,
+            default: if option {DefaultValue::null()} else {DefaultValue::NoDefault},
             argument_type: if option {ArgumentType::IntegerOption} else {ArgumentType::Integer},
             multiple: false,
             gui_info: ArgumentGUIInfo::IntegerField,
@@ -336,9 +256,7 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default_value: if option {Some("".to_string())} else {None},
-            default_query: None,
-            optional: false,
+            default: if option {DefaultValue::null()} else {DefaultValue::NoDefault},
             argument_type: if option {ArgumentType::FloatOption} else {ArgumentType::Float},
             multiple: false,
             gui_info: ArgumentGUIInfo::FloatField,
@@ -348,36 +266,26 @@ impl ArgumentInfo {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default_value: None,
-            default_query: None,
-            optional: false,
+            default: DefaultValue::NoDefault,
             argument_type: ArgumentType::Boolean,
             multiple: false,
             gui_info: ArgumentGUIInfo::Checkbox,
         }
     }
     pub fn with_default_none(&mut self) -> &mut Self {
-        self.default_value = None;
-        self.default_query = None;
-        self.optional = true;
+        self.default = DefaultValue::null();
         self
     }
-    pub fn with_default_value(&mut self, value: &str) -> &mut Self {
-        self.default_value = Some(value.to_string());
-        self.default_query = None;
-        self.optional = true;
+    pub fn with_default(&mut self, value: &str) -> &mut Self {
+        self.default = DefaultValue::from_string(value);
         self
     }
     pub fn true_by_default(&mut self) -> &mut Self {
-        self.default_value = Some("t".to_string());
-        self.default_query = None;
-        self.optional = true;
+        self.default = DefaultValue::from_value(Value::Bool(true));
         self
     }
     pub fn false_by_default(&mut self) -> &mut Self {
-        self.default_value = Some("f".to_string());
-        self.default_query = None;
-        self.optional = true;
+        self.default = DefaultValue::from_value(Value::Bool(false));
         self
     }
 
