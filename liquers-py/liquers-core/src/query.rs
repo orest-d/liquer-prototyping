@@ -1119,6 +1119,11 @@ impl Query {
         self.transform_query().and_then(|x| x.last_ns())
     }
 
+    /// Returns the last transform query name if available
+    pub fn last_transform_query_name(&self) -> Option<String> {
+        self.transform_query().map(|x| x.name())
+    }
+    
     /// Convert a query to an absolute query - i.e. interpret "." and ".." elements.
     /// See ResourceQuerySegment::to_absolute for details.
     pub fn to_absolute(&self, cwd_key: &Key) -> Self {

@@ -7,7 +7,7 @@ use crate::command_registry::{
     self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, EnumArgumentType,
 };
 use crate::error::Error;
-use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName};
+use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName, ResourceQuerySegment};
 use crate::value::ValueInterface;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -89,6 +89,7 @@ struct PlanBuilder<'c, V: ValueInterface> {
     resolved_parameters: ResolvedParameters<V>,
     parameter_number: usize,
     arginfo_number: usize,
+    plan: Plan,
 }
 
 impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
@@ -101,57 +102,86 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
             resolved_parameters: ResolvedParameters::new(),
             parameter_number: 0,
             arginfo_number: 0,
+            plan: Plan::new(),
         }
     }
 
-    fn build(mut self) -> Result<Plan, Error> {
-        let mut plan = Plan {
-            query: self.query.clone(),
-            steps: Vec::new(),
-        };
-        for (q, qs) in self.query.all_predecessor_tuples() {
-            if qs.is_empty() {
-                continue;
-            }
-            if let Some(filename) = qs.filename() {
-                plan.steps.push(Step::Filename(filename));
-                continue;
-            }
-            if let Some(action) = qs.action().as_ref() {
-                self.action_request = action.clone();
-                self.arginfo_number = 0;
-                self.parameter_number = 0;
-                let realm = qs.name();
-                let mut namespaces = if let Some(ns) = q.last_ns() {
-                    ns.iter()
-                        .filter_map(|x| match x {
-                            ActionParameter::String(s, _) => Some(s.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<String>>()
-                } else {
-                    vec![]
-                };
-                namespaces.push("".to_string());
-                namespaces.push("root".to_string());
+    fn build(&mut self) -> Result<Plan, Error> {
+        let query = self.query.clone();
+        self.process_query(&query)?;
+        Ok(self.plan.clone())
+    }
 
-                if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
-                    &realm,
-                    &namespaces,
-                    &action.name,
-                ) {
-                    self.command_metadata = command_metadata.clone();
-                } else {
-                    return Err(Error::ActionNotRegistered {
-                        message: format!(
-                            "Action '{}' not registered in namespaces {}",
-                            action.name, namespaces.iter().map(|ns| format!("'{}'",ns)).join(", ")
-                        ),
-                    });
+    fn get_namespaces(&self, query: &Query) -> Result<Vec<String>, Error> {
+        let mut namespaces = Vec::new();
+        if let Some(ns) = query.last_ns() {
+            for x in ns.iter(){
+                match x {
+                    ActionParameter::String(s, _) => {
+                        namespaces.push(s.to_string())
+                    },
+                    _ => {
+                        return Err(Error::NotSupported {
+                          message: "Only string parameters are supported in ns".into(),
+                        })
+                    }
                 }
             }
         }
-        Ok(plan)
+        // TODO: get default namespaces from command registry
+        namespaces.push("".to_string());
+        namespaces.push("root".to_string());
+        // TODO: check if the namespaces are registered in command registry
+        Ok(namespaces)
+    }
+
+    fn get_command_metadata(&mut self, query: &Query, action_request:&ActionRequest) -> Result<(), Error> {
+        let namespaces = self.get_namespaces(query)?;
+        let realm = query.last_transform_query_name().unwrap_or("".to_string());
+        if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
+            &realm,
+            &namespaces,
+            &self.action_request.name,
+        ) {
+            self.command_metadata = command_metadata.clone();
+        } else {
+            return Err(Error::ActionNotRegistered {
+                message: format!(
+                    "Action '{}' not registered in namespaces {}",
+                    self.action_request.name,
+                    namespaces.iter().map(|ns| format!("'{}'",ns)).join(", ")
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn process_resource_query(&mut self, rqs:&ResourceQuerySegment)->Result<(),Error>{
+        self.plan.steps.push(Step::GetResource(rqs.key.clone()));
+        Ok(())
+    }
+
+    fn process_command(&mut self, command_metadata:&CommandMetadata, action_request:&ActionRequest){
+
+    }
+    fn process_query(&mut self, query:&Query) -> Result<(), Error> {
+        if query.is_empty() {
+            return Ok(());
+        }
+        if let Some(rq) = query.resource_query(){
+            self.process_resource_query(&rq)?;
+            return Ok(());
+        }
+
+        let (p, q) = query.predecessor();
+
+        if let Some(p) = p.as_ref() {
+            if !p.is_empty() {
+                self.process_query(p)?;
+            }
+        }
+
+        Ok(())
     }
 
     fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo) -> Result<Option<String>, Error> {
@@ -246,6 +276,18 @@ impl<'c, V: ValueInterface> PlanBuilder<'c, V> {
             }),
         }
     }
+    fn get_parameters(&mut self, command_metadata:&CommandMetadata) -> Result<(), Error> {
+        self.arginfo_number = 0;
+        self.resolved_parameters = ResolvedParameters::new();
+        for (i, a) in command_metadata.arguments.iter().enumerate(){
+            self.arginfo_number = i;
+            let value = self.pop_value(a)?;
+            self.resolved_parameters
+                .parameters
+                .push(value);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -255,118 +297,12 @@ pub struct Plan {
 }
 
 impl Plan {
-    fn from(query: &Query) -> Plan {
-        let mut plan = Plan {
-            query: query.clone(),
-            steps: vec![],
-        };
-        let (p, r) = query.predecessor();
-        match r {
-            Some(QuerySegment::Resource(res)) => {
-                if let Some(p) = p.as_ref() {
-                    if !p.is_empty() {
-                        plan.warning(format!(
-                            "Query '{}' before resource at {} is ignored",
-                            p.encode(),
-                            res.position()
-                        ));
-                    }
-                }
-                if let Some(head) = res.header {
-                    if !head.name.is_empty() {
-                        plan.warning(format!(
-                            "Resource segment name '{}' at {} is ignored",
-                            head.name, head.position
-                        ));
-                    }
-                    if head.parameters.is_empty() {
-                        plan.steps.push(Step::GetResource(res.key.clone()));
-                    } else {
-                        if head.parameters[0].value == "meta" {
-                            if head.parameters.len() > 1 {
-                                plan.warning(format!(
-                                    "Resource segment '{}...' parameters after meta at {} ignored",
-                                    head.encode(),
-                                    head.parameters[2]
-                                ));
-                            }
-                            plan.steps.push(Step::GetResourceMetadata(res.key.clone()));
-                        } else {
-                            plan.warning(format!(
-                                "Resource segment '{}...' parameters at {} ignored",
-                                head.encode(),
-                                head.parameters[0]
-                            ));
-                            plan.steps.push(Step::GetResource(res.key.clone()));
-                        }
-                    }
-                } else {
-                    plan.steps.push(Step::GetResource(res.key.clone()));
-                }
-            }
-            Some(QuerySegment::Transform(tqs)) => {
-                if let Some(p) = p.as_ref() {
-                    if !p.is_empty() {
-                        plan.steps.push(Step::Evaluate(p.clone()));
-                    }
-                }
-                if let Some(action) = tqs.action() {
-                    let ns = p.and_then(|x| x.last_ns());
-                    if let Some(ns) = ns.as_ref() {
-                        for par in ns.iter() {
-                            if !par.is_string() {
-                                plan.error(format!(
-                                    "Unsuported namespace {} at {}",
-                                    par.encode(),
-                                    par.position()
-                                ));
-                            }
-                        }
-                    }
-                    plan.steps.push(Step::ApplyAction {
-                        ns,
-                        action: action.clone(),
-                    });
-                } else {
-                    if tqs.is_filename() {
-                        plan.steps
-                            .push(Step::Filename(tqs.filename.unwrap().clone()));
-                    } else {
-                        plan.error(format!("Unrecognized remainder {:?}", tqs));
-                    }
-                }
-            }
-            None => {
-                if let Some(p) = p {
-                    if !p.is_empty() {
-                        plan.steps.push(Step::Evaluate(p.clone()));
-                    }
-                } else {
-                    plan.warning(format!("Empty remainder"));
-                }
-            }
+    pub fn new() -> Self {
+        Plan {
+            query: Query::new(),
+            steps: Vec::new(),
         }
-        plan
     }
-    fn expand_evaluate(&mut self) -> bool {
-        for i in 0..self.steps.len() {
-            if let Step::Evaluate(query) = &self.steps[i] {
-                let mut plan = Plan::from(query);
-                self.steps.remove(i);
-                let mut i = i;
-                for x in plan.steps.drain(..) {
-                    self.steps.insert(i, x);
-                    i += 1;
-                }
-                return true;
-            }
-        }
-        false
-    }
-    fn expand(&mut self) {
-        while self.expand_evaluate() {}
-    }
-
     fn info(&mut self, message: String) {
         self.steps.push(Step::Info(message));
     }
@@ -399,89 +335,4 @@ impl Display for Plan {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_plan() -> Result<(), Box<dyn std::error::Error>> {
-        let query = crate::parse::parse_query("query")?;
-        let plan = Plan::from(&query);
-        assert!(!plan.has_error());
-        assert!(!plan.has_warning());
-        assert_eq!(plan.steps.len(), 1);
-        if let Step::ApplyAction { ns, action } = &plan.steps[0] {
-            assert!(ns.is_none());
-            assert_eq!(action.name, "query");
-        } else {
-            assert!(false);
-        }
-        Ok(())
-    }
-    #[test]
-    fn test_plan_expand_evaluate() -> Result<(), Box<dyn std::error::Error>> {
-        let query = crate::parse::parse_query("a/b/c")?;
-        let mut plan = Plan::from(&query);
-        let p1 = format!("{}", &plan);
-        assert_eq!(
-            p1,
-            r#"Plan for a/b/c:
-  EVALUATE        a/b
-  APPLY ACTION    (root): c"#
-        );
-        assert!(plan.expand_evaluate());
-        let p2 = format!("{}", &plan);
-        assert_eq!(
-            p2,
-            r#"Plan for a/b/c:
-  EVALUATE        a
-  APPLY ACTION    (root): b
-  APPLY ACTION    (root): c"#
-        );
-        Ok(())
-    }
-    #[test]
-    fn test_plan_expand() -> Result<(), Box<dyn std::error::Error>> {
-        let query = crate::parse::parse_query("a/b/c")?;
-        let mut plan = Plan::from(&query);
-        plan.expand();
-        let p = format!("{}", &plan);
-        assert_eq!(
-            p,
-            r#"Plan for a/b/c:
-  APPLY ACTION    (root): a
-  APPLY ACTION    (root): b
-  APPLY ACTION    (root): c"#
-        );
-        println!("{}", &plan);
-        Ok(())
-    }
-    #[test]
-    fn test_plan_res_expand() -> Result<(), Box<dyn std::error::Error>> {
-        let query = crate::parse::parse_query("-R/a/b/-/c/d")?;
-        let mut plan = Plan::from(&query);
-        plan.expand();
-        let p = format!("{}", &plan);
-        println!("{}", p);
-        assert_eq!(
-            p,
-            r#"Plan for -R/a/b/-/c/d:
-  GET RES         a/b
-  APPLY ACTION    (root): c
-  APPLY ACTION    (root): d"#
-        );
-        Ok(())
-    }
-    #[test]
-    fn test_plan_res_expand1() -> Result<(), Box<dyn std::error::Error>> {
-        let query = crate::parse::parse_query("a/b/-/c/d")?;
-        let mut plan = Plan::from(&query);
-        plan.expand();
-        let p = format!("{}", &plan);
-        println!("{}", p);
-        assert_eq!(
-            p,
-            r#"Plan for a/b/-/c/d:
-  GET RES         a/b
-  APPLY ACTION    (root): c
-  APPLY ACTION    (root): d"#
-        );
-        Ok(())
-    }
 }
