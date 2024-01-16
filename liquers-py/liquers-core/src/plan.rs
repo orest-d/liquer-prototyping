@@ -5,10 +5,14 @@ use nom::Err;
 use serde_json::Value;
 
 use crate::command_registry::{
-    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, EnumArgumentType, DefaultValue,
+    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, DefaultValue,
+    EnumArgumentType,
 };
 use crate::error::Error;
-use crate::query::{ActionParameter, ActionRequest, Key, Query, QuerySegment, ResourceName, ResourceQuerySegment, Position};
+use crate::query::{
+    ActionParameter, ActionRequest, Key, Position, Query, QuerySegment, ResourceName,
+    ResourceQuerySegment,
+};
 use crate::value::ValueInterface;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -18,13 +22,13 @@ pub enum Step {
     GetNamedResource(Key),
     GetNamedResourceMetadata(Key),
     Evaluate(Query),
-    Action{
-        realm:String,
-        ns:String,
-        action_name:String,
-        position:Position,
-        parameters: ResolvedParameters
-    },   
+    Action {
+        realm: String,
+        ns: String,
+        action_name: String,
+        position: Position,
+        parameters: ResolvedParameters,
+    },
     Filename(ResourceName),
     Info(String),
     Warning(String),
@@ -46,7 +50,6 @@ impl Step {
         }
     }
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResolvedParameters {
@@ -97,14 +100,12 @@ impl<'c> PlanBuilder<'c> {
     fn get_namespaces(&self, query: &Query) -> Result<Vec<String>, Error> {
         let mut namespaces = Vec::new();
         if let Some(ns) = query.last_ns() {
-            for x in ns.iter(){
+            for x in ns.iter() {
                 match x {
-                    ActionParameter::String(s, _) => {
-                        namespaces.push(s.to_string())
-                    },
+                    ActionParameter::String(s, _) => namespaces.push(s.to_string()),
                     _ => {
                         return Err(Error::NotSupported {
-                          message: "Only string parameters are supported in ns".into(),
+                            message: "Only string parameters are supported in ns".into(),
                         })
                     }
                 }
@@ -117,7 +118,11 @@ impl<'c> PlanBuilder<'c> {
         Ok(namespaces)
     }
 
-    fn get_command_metadata(&mut self, query: &Query, action_request:&ActionRequest) -> Result<CommandMetadata, Error> {
+    fn get_command_metadata(
+        &mut self,
+        query: &Query,
+        action_request: &ActionRequest,
+    ) -> Result<CommandMetadata, Error> {
         let namespaces = self.get_namespaces(query)?;
         let realm = query.last_transform_query_name().unwrap_or("".to_string());
         if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
@@ -131,47 +136,53 @@ impl<'c> PlanBuilder<'c> {
                 message: format!(
                     "Action '{}' not registered in namespaces {}",
                     action_request.name,
-                    namespaces.iter().map(|ns| format!("'{}'",ns)).join(", ")
+                    namespaces.iter().map(|ns| format!("'{}'", ns)).join(", ")
                 ),
             })
         }
     }
 
-    fn process_resource_query(&mut self, rqs:&ResourceQuerySegment)->Result<(),Error>{
+    fn process_resource_query(&mut self, rqs: &ResourceQuerySegment) -> Result<(), Error> {
         self.plan.steps.push(Step::GetResource(rqs.key.clone()));
         Ok(())
     }
 
-    fn process_action(&mut self, query:&Query, action_request:&ActionRequest)->Result<(),Error>{
+    fn process_action(
+        &mut self,
+        query: &Query,
+        action_request: &ActionRequest,
+    ) -> Result<(), Error> {
         let command_metadata = self.get_command_metadata(query, action_request)?;
         self.get_parameters(&command_metadata, action_request)?;
-        self.plan.steps.push(Step::Action{
-            realm:command_metadata.realm.clone(),
-            ns:command_metadata.namespace.clone(),
-            action_name:action_request.name.clone(),
-            position:action_request.position.clone(),
-            parameters:self.resolved_parameters.clone()
+        self.plan.steps.push(Step::Action {
+            realm: command_metadata.realm.clone(),
+            ns: command_metadata.namespace.clone(),
+            action_name: action_request.name.clone(),
+            position: action_request.position.clone(),
+            parameters: self.resolved_parameters.clone(),
         });
         Ok(())
     }
 
-    fn process_query(&mut self, query:&Query) -> Result<(), Error> {
-        if query.is_empty() || query.is_ns(){
+    fn process_query(&mut self, query: &Query) -> Result<(), Error> {
+        if query.is_empty() || query.is_ns() {
             return Ok(());
         }
-        if let Some(rq) = query.resource_query(){
+        if let Some(rq) = query.resource_query() {
             self.process_resource_query(&rq)?;
             return Ok(());
         }
-        if let Some(transform) = query.transform_query(){
-            if let Some(action) = transform.action(){
-                let mut query= query.clone();
-                query.segments=Vec::new();
+        if let Some(transform) = query.transform_query() {
+            if let Some(action) = transform.action() {
+                let mut query = query.clone();
+                query.segments = Vec::new();
                 self.process_action(&query, &action)?;
                 return Ok(());
             }
-            if transform.is_filename(){
-                self.plan.steps.push(Step::Filename(transform.filename.unwrap().clone()));
+            if transform.is_filename() {
+                self.plan
+                    .steps
+                    .push(Step::Filename(transform.filename.unwrap().clone()));
                 return Ok(());
             }
             return Ok(());
@@ -189,66 +200,73 @@ impl<'c> PlanBuilder<'c> {
                 QuerySegment::Resource(ref rqs) => {
                     self.process_resource_query(rqs)?;
                     return Ok(());
-                },
+                }
                 QuerySegment::Transform(ref tqs) => {
-                    if tqs.is_empty() || tqs.is_ns(){
+                    if tqs.is_empty() || tqs.is_ns() {
                         return Ok(());
                     }
-                    if let Some(action) = tqs.action(){
+                    if let Some(action) = tqs.action() {
                         self.process_action(&query, &action)?;
                         return Ok(());
                     }
-                    if tqs.is_filename(){
-                        self.plan.steps.push(Step::Filename(tqs.filename.as_ref().unwrap().clone()));
+                    if tqs.is_filename() {
+                        self.plan
+                            .steps
+                            .push(Step::Filename(tqs.filename.as_ref().unwrap().clone()));
                         return Ok(());
                     }
                     return Err(Error::NotSupported {
                         message: format!("Unexpected query segment '{}'", qs.encode()),
                     });
-                },
+                }
             }
         }
         Ok(())
     }
 
-    fn pop_action_parameter(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Option<Value>, Error> {
+    fn pop_action_parameter(
+        &mut self,
+        arginfo: &ArgumentInfo,
+        action_request: &ActionRequest,
+    ) -> Result<Option<Value>, Error> {
         match action_request.parameters.get(self.parameter_number) {
             Some(ActionParameter::String(v, _)) => {
                 self.parameter_number += 1;
                 Ok(Some(Value::String(v.to_owned())))
-            },
+            }
             Some(ActionParameter::Link(q, _)) => {
                 self.resolved_parameters
                     .links
                     .push((self.resolved_parameters.parameters.len(), q.clone()));
                 self.parameter_number += 1;
                 Ok(None)
-            },
-            None => {
-                match &arginfo.default {
-                    DefaultValue::Value(v) => {
-                        Ok(Some(v.clone()))
-                    },
-                    DefaultValue::Query(q) => {
-                        self.resolved_parameters
-                            .links
-                            .push((self.resolved_parameters.parameters.len(), q.clone()));
-                        Ok(None)
-                    },
-                    DefaultValue::NoDefault => {
-                        Err(Error::missing_argument(
-                            self.arginfo_number,
-                            &arginfo.name,
-                            &action_request.position,
-                        ))
-                    },
-                }
             }
+            None => match &arginfo.default {
+                DefaultValue::Value(v) => Ok(Some(v.clone())),
+                DefaultValue::Query(q) => {
+                    self.resolved_parameters
+                        .links
+                        .push((self.resolved_parameters.parameters.len(), q.clone()));
+                    Ok(None)
+                }
+                DefaultValue::NoDefault => Err(Error::missing_argument(
+                    self.arginfo_number,
+                    &arginfo.name,
+                    &action_request.position,
+                )),
+            },
         }
     }
 
-    fn pop_value(&mut self, arginfo: &ArgumentInfo, action_request:&ActionRequest) -> Result<Value, Error> {
-        match (&arginfo.argument_type, self.pop_action_parameter(arginfo, action_request)?) {
+    fn pop_value(
+        &mut self,
+        arginfo: &ArgumentInfo,
+        action_request: &ActionRequest,
+    ) -> Result<Value, Error> {
+        match (
+            &arginfo.argument_type,
+            self.pop_action_parameter(arginfo, action_request)?,
+        ) {
             (_, None) => Ok(Value::Null),
             (ArgumentType::String, Some(x)) => Ok(Value::String(x.to_string())),
             (ArgumentType::Integer, Some(x)) => Ok(x),
@@ -269,16 +287,18 @@ impl<'c> PlanBuilder<'c> {
             }),
         }
     }
-    fn get_parameters(&mut self, command_metadata:&CommandMetadata, action_request:&ActionRequest) -> Result<(), Error> {
+    fn get_parameters(
+        &mut self,
+        command_metadata: &CommandMetadata,
+        action_request: &ActionRequest,
+    ) -> Result<(), Error> {
         self.arginfo_number = 0;
         self.parameter_number = 0;
         self.resolved_parameters = ResolvedParameters::new();
-        for (i, a) in command_metadata.arguments.iter().enumerate(){
+        for (i, a) in command_metadata.arguments.iter().enumerate() {
             self.arginfo_number = i;
             let value = self.pop_value(a, action_request)?;
-            self.resolved_parameters
-                .parameters
-                .push(value);
+            self.resolved_parameters.parameters.push(value);
         }
         Ok(())
     }
@@ -316,6 +336,20 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
+    use crate::command_registry::*;
+    use crate::parse::parse_query;
+    use serde_yaml;
+
     use super::*;
 
+    #[test]
+    fn first_test() {
+        let mut cr = command_registry::CommandRegistry::new();
+        cr.add_command(CommandMetadata::new("a").with_argument(ArgumentInfo::any_argument("a")));
+        let plan = PlanBuilder::new(parse_query("a-1").unwrap(), &cr)
+            .build()
+            .unwrap();
+        println!("plan: {:?}", plan);
+        println!("plan.yaml:\n{}",serde_yaml::to_string(&plan).unwrap());
+    }
 }

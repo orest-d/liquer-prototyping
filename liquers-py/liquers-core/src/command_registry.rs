@@ -364,8 +364,8 @@ impl CommandRegistry {
     pub fn new() -> Self {
         CommandRegistry { commands: Vec::new() }
     }
-    pub fn add_command(&mut self, command: CommandMetadata) -> &mut Self {
-        self.commands.push(command);
+    pub fn add_command(&mut self, command: &CommandMetadata) -> &mut Self {
+        self.commands.push(command.to_owned());
         self
     }
     pub fn find_command(&self, realm:&str, namespace:&str, name: &str) -> Option<CommandMetadata> {
