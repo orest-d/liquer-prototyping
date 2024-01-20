@@ -10,7 +10,7 @@ pub enum Error {
     CommandAlreadyRegistered { message: String },
     ParseError { message: String, position: Position },
     ParameterError { message: String, position: Position },
-    ConversionError { message: String },
+    ConversionError { message: String, position: Position },
     SerializationError { message: String, format: String },
     General { message: String },
     CacheNotSupported,
@@ -26,7 +26,14 @@ impl Error{
     }
     pub fn conversion_error<W:Display,T:Display>(what:W,to:T) -> Self {
         Error::ConversionError {
-            message: format!("Can't convert '{}' to {}", what, to)
+            message: format!("Can't convert '{}' to {}", what, to),
+            position: Position::unknown()
+        }
+    }
+    pub fn conversion_error_at_position<W:Display,T:Display>(what:W,to:T,position:&Position) -> Self {
+        Error::ConversionError {
+            message: format!("Can't convert '{}' to {}", what, to),
+            position: position.clone()
         }
     }
 }
@@ -40,8 +47,14 @@ impl fmt::Display for Error {
             Error::ParseError { message, position } => write!(f, "Error: {} {}", message, position),
             Error::ParameterError { message, position } => {
                 write!(f, "Error: {} {}", message, position)
-            }
-            Error::ConversionError { message } => write!(f, "Error: {}", message),
+            },
+            Error::ConversionError { message, position } => {
+                if position.is_unknown() {
+                    write!(f, "Error: {}", message)
+                } else {
+                    write!(f, "Error: {} at {}", message, position)
+                }
+            },
             Error::SerializationError { message, format: _ } => write!(f, "Error: {}", message),
             Error::General { message } => write!(f, "Error: {}", message),
             Error::CacheNotSupported => write!(f, "Error: Cache not supported"),

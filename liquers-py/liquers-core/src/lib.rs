@@ -12,3 +12,4 @@ pub mod plan;
 pub mod cache;
 pub mod value;
 pub mod state;
+pub mod commands;

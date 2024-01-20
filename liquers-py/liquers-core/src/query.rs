@@ -27,6 +27,9 @@ impl Position {
             column: 0,
         }
     }
+    pub fn is_unknown(&self) -> bool {
+        self.line == 0
+    }
 }
 
 impl Default for Position {

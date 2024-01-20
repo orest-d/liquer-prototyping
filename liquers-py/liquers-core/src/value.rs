@@ -37,9 +37,7 @@ pub trait ValueInterface: Clone {
 
     /// From integer string
     fn from_i32_str(n: &str) -> Result<Self, Error>{
-        n.parse::<i32>().map(|x| Self::from_i32(x)).map_err(|_| Error::ConversionError{
-            message: format!("Can't convert '{}' to i32", n)
-        })
+        n.parse::<i32>().map(|x| Self::from_i32(x)).map_err(|_| Error::conversion_error(n, "i32"))
     }
 
     /// From integer
@@ -47,9 +45,7 @@ pub trait ValueInterface: Clone {
 
     /// From integer string
     fn from_i64_str(n: &str) -> Result<Self, Error>{
-        n.parse::<i64>().map(|x| Self::from_i64(x)).map_err(|_| Error::ConversionError{
-            message: format!("Can't convert '{}' to i64", n)
-        })
+        n.parse::<i64>().map(|x| Self::from_i64(x)).map_err(|_| Error::conversion_error(n, "i64"))
     }
 
     /// From float
@@ -57,9 +53,7 @@ pub trait ValueInterface: Clone {
 
     /// From float string
     fn from_f64_str(n: &str) -> Result<Self, Error>{
-        n.parse::<f64>().map(|x| Self::from_f64(x)).map_err(|_| Error::ConversionError{
-            message: format!("Can't convert '{}' to f64", n)
-        })
+        n.parse::<f64>().map(|x| Self::from_f64(x)).map_err(|_| Error::conversion_error(n, "f64"))
     }
 
     /// From boolean
@@ -78,9 +72,7 @@ pub trait ValueInterface: Clone {
             "no" => Ok(Self::from_bool(false)),
             "n" => Ok(Self::from_bool(false)),
             "0" => Ok(Self::from_bool(false)),
-            _ => Err(Error::ConversionError{
-                message: format!("Can't convert '{}' to bool", b)
-            })
+            _ => Err(Error::conversion_error(b, "bool")),
         }
     }
 
@@ -141,34 +133,18 @@ impl ValueInterface for Value {
 
     fn try_into_string(&self) -> Result<String, Error> {
         match self {
-            Value::None => Err(Error::ConversionError {
-                message: format!("{} is not a string", self.identifier()),
-            }),
-            Value::Bool(_) => Err(Error::ConversionError {
-                message: format!("{} is not a string", self.identifier()),
-            }),
             Value::I32(n) => Ok(format!("{n}")),
             Value::I64(n) => Ok(format!("{n}")),
             Value::F64(n) => Ok(format!("{n}")),
             Value::Text(t) => Ok(t.to_owned()),
-            Value::Array(_) => Err(Error::ConversionError {
-                message: format!("{} is not a string", self.identifier()),
-            }),
-            Value::Object(_) => Err(Error::ConversionError {
-                message: format!("{} is not a string", self.identifier()),
-            }),
-            Value::Bytes(_) => Err(Error::ConversionError {
-                message: format!("{} is not a string", self.identifier()),
-            }),
+            _ => Err(Error::conversion_error(self.identifier(), "string")),
         }
     }
 
     fn try_into_i32(&self) -> Result<i32, Error> {
         match self {
             Value::I32(n) => Ok(*n),
-            _ => Err(Error::ConversionError {
-                message: format!("{} is not an i32", self.identifier()),
-            }),
+            _ => Err(Error::conversion_error(self.identifier(), "i32")),
         }
     }
 
@@ -194,9 +170,7 @@ impl ValueInterface for Value {
                 }
                 Ok(serde_json::Value::Object(m))
             },
-            _ => Err(Error::ConversionError {
-                message: format!("{} is not a JSON value", self.identifier()),
-            })
+            _ => Err(Error::conversion_error(self.identifier(), "JSON value")),
         }
     }
 
@@ -296,12 +270,8 @@ impl TryFrom<&Value> for i32 {
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
         match value {
             Value::I32(x) => Ok(*x),
-            Value::I64(x) => i32::try_from(*x).map_err(|e| Error::ConversionError {
-                message: format!("I64 to i32 conversion error {e}"),
-            }),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to i32", value.type_name()),
-            }),
+            Value::I64(x) => i32::try_from(*x).map_err(|e| Error::conversion_error("I64", "i32")),
+            _ => Err(Error::conversion_error(value.type_name(), "i32")),
         }
     }
 }
@@ -311,12 +281,9 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::I32(x) => Ok(x),
-            Value::I64(x) => i32::try_from(x).map_err(|e| Error::ConversionError {
-                message: format!("I64 to i32 conversion error {e}"),
-            }),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to i32", value.type_name()),
-            }),
+            Value::I64(x) => i32::try_from(x).map_err(|e| Error::
+                conversion_error("I64", "i32")),
+            _ => Err(Error::conversion_error(value.type_name(), "i32")),
         }
     }
 }
@@ -339,9 +306,7 @@ impl TryFrom<Value> for i64 {
         match value {
             Value::I32(x) => Ok(x as i64),
             Value::I64(x) => Ok(x),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to i64", value.type_name()),
-            }),
+            _ => Err(Error::conversion_error(value.type_name(), "i64")),
         }
     }
 }
@@ -358,9 +323,7 @@ impl TryFrom<Value> for f64 {
             Value::I32(x) => Ok(x as f64),
             Value::I64(x) => Ok(x as f64),
             Value::F64(x) => Ok(x),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to f64", value.type_name()),
-            }),
+            _ => Err(Error::conversion_error(value.type_name(), "f64")),
         }
     }
 }
@@ -376,9 +339,7 @@ impl TryFrom<Value> for bool {
         match value {
             Value::I32(x) => Ok(x != 0),
             Value::I64(x) => Ok(x != 0),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to bool", value.type_name()),
-            }),
+            _ => Err(Error::conversion_error(value.type_name(), "bool"))
         }
     }
 }
@@ -398,6 +359,7 @@ impl TryFrom<Value> for String {
             Value::F64(x) => Ok(format!("{}", x)),
             _ => Err(Error::ConversionError {
                 message: format!("Can't convert {} to string", value.type_name()),
+                position: Default::default(),
             }),
         }
     }

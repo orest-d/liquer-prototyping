@@ -51,9 +51,13 @@ impl Step {
     }
 }
 
+//TODO: Add position and default flag
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Parameter(pub Value);
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResolvedParameters {
-    pub parameters: Vec<Value>,
+    pub parameters: Vec<Parameter>,
     pub links: Vec<(usize, Query)>,
 }
 
@@ -298,7 +302,7 @@ impl<'c> PlanBuilder<'c> {
         for (i, a) in command_metadata.arguments.iter().enumerate() {
             self.arginfo_number = i;
             let value = self.pop_value(a, action_request)?;
-            self.resolved_parameters.parameters.push(value);
+            self.resolved_parameters.parameters.push(Parameter(value));
         }
         Ok(())
     }
@@ -334,6 +338,8 @@ impl Plan {
     }
 }
 
+
+
 #[cfg(test)]
 mod tests {
     use crate::command_registry::*;
@@ -350,6 +356,14 @@ mod tests {
             .build()
             .unwrap();
         println!("plan: {:?}", plan);
+        print!("");
         println!("plan.yaml:\n{}",serde_yaml::to_string(&plan).unwrap());
+        print!("");
+        println!("command_registry.yaml:\n{}",serde_yaml::to_string(&cr).unwrap());
+        print!("");
+        println!("plan.json:\n{}",serde_json::to_string(&plan).unwrap());
+        print!("");
+        println!("command_registry.json:\n{}",serde_json::to_string(&cr).unwrap());
+        print!("");
     }
 }
