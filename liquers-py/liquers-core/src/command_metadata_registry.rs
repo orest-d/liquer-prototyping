@@ -33,12 +33,16 @@ impl CommandRegistryIssue {
     }
 }
 
+// TODO: consider link as value for enum argument
+/// Single alternative of an enum argument, see EnumArgument
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgumentAlternative {
     pub name: String,
     pub value: Value,
 }
 
+/// Type of an enum argument, see EnumArgument
+/// This is a restricted version of ArgumentType to prevent circular type definition
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum EnumArgumentType {
     #[serde(rename = "string")]
@@ -52,7 +56,15 @@ pub enum EnumArgumentType {
     #[serde(rename = "float_opt")]
     FloatOption,
     #[serde(rename = "bool")]
-    Boolean
+    Boolean,
+    #[serde(rename = "any")]
+    Any
+}
+
+impl Default for EnumArgumentType {
+    fn default() -> Self {
+        EnumArgumentType::String
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -319,8 +331,13 @@ impl CommandMetadata{
         }
     }
     pub fn check(&self)->Vec<CommandRegistryIssue>{
-        //TODO: ns is forbidden as command name
         let mut issues = Vec::new();
+        if self.name == ""{
+            issues.push(CommandRegistryIssue::error(&self.realm, &self.namespace, &self.name, "Command name is empty".to_string()));
+        }
+        if self.name == "ns"{
+            issues.push(CommandRegistryIssue::error(&self.realm, &self.namespace, &self.name, "Command name 'ns' is reserved".to_string()));
+        }
         for a in self.arguments.iter(){
             issues.append(&mut a.check(&self.realm, &self.namespace, &self.name));
         }
