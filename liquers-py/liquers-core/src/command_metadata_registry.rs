@@ -319,6 +319,7 @@ impl CommandMetadata{
         }
     }
     pub fn check(&self)->Vec<CommandRegistryIssue>{
+        //TODO: ns is forbidden as command name
         let mut issues = Vec::new();
         for a in self.arguments.iter(){
             issues.append(&mut a.check(&self.realm, &self.namespace, &self.name));
@@ -356,13 +357,13 @@ impl CommandMetadata{
 
 /// Command registry is a structure holding description (metadata) of all commands available in the system
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CommandRegistry {
+pub struct CommandMetadataRegistry {
     pub commands: Vec<CommandMetadata>,
 }
 
-impl CommandRegistry {
+impl CommandMetadataRegistry {
     pub fn new() -> Self {
-        CommandRegistry { commands: Vec::new() }
+        CommandMetadataRegistry { commands: Vec::new() }
     }
     pub fn add_command(&mut self, command: &CommandMetadata) -> &mut Self {
         self.commands.push(command.to_owned());

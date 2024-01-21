@@ -7,7 +7,7 @@ pub mod metadata;
 pub mod parse;
 pub mod query;
 pub mod store;
-pub mod command_registry;
+pub mod command_metadata_registry;
 pub mod plan;
 pub mod cache;
 pub mod value;

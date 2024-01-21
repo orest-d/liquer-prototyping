@@ -4,8 +4,8 @@ use itertools::Itertools;
 use nom::Err;
 use serde_json::Value;
 
-use crate::command_registry::{
-    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandRegistry, DefaultValue,
+use crate::command_metadata_registry::{
+    self, ArgumentInfo, ArgumentType, CommandMetadata, CommandMetadataRegistry, DefaultValue,
     EnumArgumentType,
 };
 use crate::error::Error;
@@ -76,7 +76,7 @@ impl ResolvedParameters {
 
 struct PlanBuilder<'c> {
     query: Query,
-    command_registry: &'c CommandRegistry,
+    command_registry: &'c CommandMetadataRegistry,
     resolved_parameters: ResolvedParameters,
     parameter_number: usize,
     arginfo_number: usize,
@@ -84,7 +84,7 @@ struct PlanBuilder<'c> {
 }
 
 impl<'c> PlanBuilder<'c> {
-    fn new(query: Query, command_registry: &'c CommandRegistry) -> Self {
+    fn new(query: Query, command_registry: &'c CommandMetadataRegistry) -> Self {
         PlanBuilder {
             query,
             command_registry,
@@ -342,7 +342,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use crate::command_registry::*;
+    use crate::command_metadata_registry::*;
     use crate::parse::parse_query;
     use serde_yaml;
 
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn first_test() {
-        let mut cr = command_registry::CommandRegistry::new();
+        let mut cr = command_metadata_registry::CommandMetadataRegistry::new();
         cr.add_command(CommandMetadata::new("a").with_argument(ArgumentInfo::any_argument("a")));
         let plan = PlanBuilder::new(parse_query("a-1").unwrap(), &cr)
             .build()
