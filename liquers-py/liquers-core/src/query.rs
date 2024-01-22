@@ -402,7 +402,7 @@ impl PartialEq for SegmentHeader {
             && self.level == other.level
             && self.parameters == other.parameters
             && self.resource == other.resource
-    }    
+    }
 }
 
 impl Eq for SegmentHeader {}
@@ -435,7 +435,7 @@ impl TransformQuerySegment {
     }
 
     /// Return name of the transform query segment
-    pub fn name(&self)->String{
+    pub fn name(&self) -> String {
         if let Some(header) = &self.header {
             header.name.clone()
         } else {
@@ -570,9 +570,7 @@ impl Display for TransformQuerySegment {
 
 impl PartialEq for TransformQuerySegment {
     fn eq(&self, other: &Self) -> bool {
-        self.header == other.header
-            && self.query == other.query
-            && self.filename == other.filename
+        self.header == other.header && self.query == other.query && self.filename == other.filename
     }
 }
 
@@ -750,7 +748,7 @@ impl ResourceQuerySegment {
     }
 
     /// Return name of the resource query segment
-    pub fn name(&self)->String{
+    pub fn name(&self) -> String {
         if let Some(header) = &self.header {
             header.name.clone()
         } else {
@@ -877,7 +875,7 @@ impl QuerySegment {
     }
 
     /// Return name of the query segment
-    pub fn name(&self)->String{
+    pub fn name(&self) -> String {
         match self {
             QuerySegment::Resource(rqs) => rqs.name(),
             QuerySegment::Transform(tqs) => tqs.name(),
@@ -1126,7 +1124,7 @@ impl Query {
     pub fn last_transform_query_name(&self) -> Option<String> {
         self.transform_query().map(|x| x.name())
     }
-    
+
     /// Convert a query to an absolute query - i.e. interpret "." and ".." elements.
     /// See ResourceQuerySegment::to_absolute for details.
     pub fn to_absolute(&self, cwd_key: &Key) -> Self {
@@ -1414,7 +1412,7 @@ impl Index<usize> for Query {
     fn index(&self, index: usize) -> &Self::Output {
         &self.segments[index]
     }
-}   
+}
 
 impl IndexMut<usize> for Query {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {

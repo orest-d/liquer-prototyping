@@ -47,15 +47,15 @@ impl BinCache for NoBinCache {
     }
 
     fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error> {
-        Err(Error::CacheNotSupported)
+        Err(Error::cache_not_supported().with_query(&metadata.query()?))
     }
 
     fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error> {
-        Err(Error::CacheNotSupported)
+        Err(Error::cache_not_supported().with_query(&metadata.query()?))
     }
 
     fn remove(&mut self, query: &Query) -> Result<(), Error> {
-        Err(Error::CacheNotSupported)
+        Err(Error::cache_not_supported().with_query(query))
     }
 
     fn contains(&self, query: &Query) -> bool {
@@ -105,7 +105,8 @@ impl BinCache for MemoryBinCache {
             *am = Arc::new(metadata.clone());
             *d = Some(data.to_vec());
         } else {
-            self.0.insert(query, (Arc::new(metadata.clone()), Some(data.to_vec())));
+            self.0
+                .insert(query, (Arc::new(metadata.clone()), Some(data.to_vec())));
         }
         Ok(())
     }
@@ -137,7 +138,7 @@ mod tests {
     use std::{sync::Mutex, thread, time::Duration};
 
     use super::*;
-    use crate::parse::{parse_query};
+    use crate::parse::parse_query;
 
     #[test]
     fn test_no_cache() -> Result<(), Error> {

@@ -58,7 +58,7 @@ pub enum EnumArgumentType {
     #[serde(rename = "bool")]
     Boolean,
     #[serde(rename = "any")]
-    Any
+    Any,
 }
 
 impl Default for EnumArgumentType {
@@ -87,7 +87,7 @@ impl EnumArgument {
     pub fn with_value(&mut self, name: &str, value: Value) -> &mut Self {
         self.values.push(EnumArgumentAlternative {
             name: name.to_string(),
-            value
+            value,
         });
         self
     }
@@ -99,13 +99,13 @@ impl EnumArgument {
         self.others_allowed = true;
         self
     }
-    pub fn name_to_value(&self, name:String)->Option<Value>{
+    pub fn name_to_value(&self, name: String) -> Option<Value> {
         for alternative in &self.values {
             if alternative.name == name {
                 return Some(alternative.value.clone());
             }
         }
-        if self.others_allowed{
+        if self.others_allowed {
             return Some(Value::String(name));
         }
         None
@@ -166,43 +166,43 @@ impl Default for ArgumentGUIInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum DefaultValue{
+pub enum DefaultValue {
     Value(Value),
     Query(Query),
-    NoDefault
+    NoDefault,
 }
 
-impl DefaultValue{
-    fn new()->Self{
+impl DefaultValue {
+    fn new() -> Self {
         DefaultValue::NoDefault
     }
-    fn null()->Self{
+    fn null() -> Self {
         DefaultValue::Value(Value::Null)
     }
-    fn is_null(&self)->bool{
-        match self{
-            DefaultValue::Value(value)=>value.is_null(),
-            _=>false
+    fn is_null(&self) -> bool {
+        match self {
+            DefaultValue::Value(value) => value.is_null(),
+            _ => false,
         }
     }
-    fn from_value(value:Value)->Self{
+    fn from_value(value: Value) -> Self {
         DefaultValue::Value(value)
     }
-    fn from_query(query:Query)->Self{
+    fn from_query(query: Query) -> Self {
         DefaultValue::Query(query)
     }
-    fn from_string(value:&str)->Self{
+    fn from_string(value: &str) -> Self {
         DefaultValue::Value(Value::String(value.to_string()))
     }
-    fn from_integer(value:i64)->Self{
+    fn from_integer(value: i64) -> Self {
         DefaultValue::Value(Value::Number(serde_json::Number::from(value)))
     }
-    fn from_float(value:f64)->Self{
+    fn from_float(value: f64) -> Self {
         DefaultValue::Value(Value::Number(serde_json::Number::from_f64(value).unwrap()))
     }
 }
 
-impl Default for DefaultValue{
+impl Default for DefaultValue {
     fn default() -> Self {
         DefaultValue::NoDefault
     }
@@ -229,7 +229,7 @@ impl ArgumentInfo {
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
-    fn check(&self, realm:&str, namespace:&str, name:&str) -> Vec<CommandRegistryIssue> {
+    fn check(&self, realm: &str, namespace: &str, name: &str) -> Vec<CommandRegistryIssue> {
         let mut issues = Vec::new();
         issues
     }
@@ -254,22 +254,38 @@ impl ArgumentInfo {
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
-    pub fn integer_argument(name: &str, option:bool) -> Self {
+    pub fn integer_argument(name: &str, option: bool) -> Self {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default: if option {DefaultValue::null()} else {DefaultValue::NoDefault},
-            argument_type: if option {ArgumentType::IntegerOption} else {ArgumentType::Integer},
+            default: if option {
+                DefaultValue::null()
+            } else {
+                DefaultValue::NoDefault
+            },
+            argument_type: if option {
+                ArgumentType::IntegerOption
+            } else {
+                ArgumentType::Integer
+            },
             multiple: false,
             gui_info: ArgumentGUIInfo::IntegerField,
         }
     }
-    pub fn float_argument(name: &str, option:bool) -> Self {
+    pub fn float_argument(name: &str, option: bool) -> Self {
         ArgumentInfo {
             name: name.to_string(),
             label: name.replace("_", " ").to_string(),
-            default: if option {DefaultValue::null()} else {DefaultValue::NoDefault},
-            argument_type: if option {ArgumentType::FloatOption} else {ArgumentType::Float},
+            default: if option {
+                DefaultValue::null()
+            } else {
+                DefaultValue::NoDefault
+            },
+            argument_type: if option {
+                ArgumentType::FloatOption
+            } else {
+                ArgumentType::Float
+            },
             multiple: false,
             gui_info: ArgumentGUIInfo::FloatField,
         }
@@ -318,7 +334,7 @@ pub struct CommandMetadata {
     pub arguments: Vec<ArgumentInfo>,
 }
 
-impl CommandMetadata{
+impl CommandMetadata {
     pub fn new(name: &str) -> Self {
         CommandMetadata {
             realm: "".to_string(),
@@ -330,15 +346,25 @@ impl CommandMetadata{
             arguments: Vec::new(),
         }
     }
-    pub fn check(&self)->Vec<CommandRegistryIssue>{
+    pub fn check(&self) -> Vec<CommandRegistryIssue> {
         let mut issues = Vec::new();
-        if self.name == ""{
-            issues.push(CommandRegistryIssue::error(&self.realm, &self.namespace, &self.name, "Command name is empty".to_string()));
+        if self.name == "" {
+            issues.push(CommandRegistryIssue::error(
+                &self.realm,
+                &self.namespace,
+                &self.name,
+                "Command name is empty".to_string(),
+            ));
         }
-        if self.name == "ns"{
-            issues.push(CommandRegistryIssue::error(&self.realm, &self.namespace, &self.name, "Command name 'ns' is reserved".to_string()));
+        if self.name == "ns" {
+            issues.push(CommandRegistryIssue::error(
+                &self.realm,
+                &self.namespace,
+                &self.name,
+                "Command name 'ns' is reserved".to_string(),
+            ));
         }
-        for a in self.arguments.iter(){
+        for a in self.arguments.iter() {
             issues.append(&mut a.check(&self.realm, &self.namespace, &self.name));
         }
         issues
@@ -371,7 +397,6 @@ impl CommandMetadata{
     }
 }
 
-
 /// Command registry is a structure holding description (metadata) of all commands available in the system
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommandMetadataRegistry {
@@ -380,13 +405,20 @@ pub struct CommandMetadataRegistry {
 
 impl CommandMetadataRegistry {
     pub fn new() -> Self {
-        CommandMetadataRegistry { commands: Vec::new() }
+        CommandMetadataRegistry {
+            commands: Vec::new(),
+        }
     }
     pub fn add_command(&mut self, command: &CommandMetadata) -> &mut Self {
         self.commands.push(command.to_owned());
         self
     }
-    pub fn find_command(&self, realm:&str, namespace:&str, name: &str) -> Option<CommandMetadata> {
+    pub fn find_command(
+        &self,
+        realm: &str,
+        namespace: &str,
+        name: &str,
+    ) -> Option<CommandMetadata> {
         for command in &self.commands {
             if command.realm == realm && command.namespace == namespace && command.name == name {
                 return Some(command.clone());
@@ -394,7 +426,12 @@ impl CommandMetadataRegistry {
         }
         None
     }
-    pub fn find_command_in_namespaces(&self, realm:&str, namespaces:&Vec<String>, name:&str) -> Option<CommandMetadata> {
+    pub fn find_command_in_namespaces(
+        &self,
+        realm: &str,
+        namespaces: &Vec<String>,
+        name: &str,
+    ) -> Option<CommandMetadata> {
         for namespace in namespaces {
             if let Some(command) = self.find_command(realm, namespace, name) {
                 return Some(command);

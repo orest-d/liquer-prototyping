@@ -6,7 +6,6 @@ use thiserror::Error;
 use crate::metadata::{Metadata, MetadataRecord};
 use crate::query::Key;
 
-
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("Key not found: {0}")]
@@ -31,7 +30,7 @@ pub trait Store {
     }
 
     /// Create default metadata object for a given key
-    fn default_metadata(&self, _key: &Key,_is_dir: bool) -> MetadataRecord {
+    fn default_metadata(&self, _key: &Key, _is_dir: bool) -> MetadataRecord {
         MetadataRecord::new()
     }
 
@@ -136,7 +135,7 @@ pub trait Store {
     /// subdirectories are not traversed.
     fn listdir_keys(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
         let names = self.listdir(key)?;
-        Ok(names.iter().map(|x| {key.join(x)}).collect())
+        Ok(names.iter().map(|x| key.join(x)).collect())
     }
 
     /// Return keys inside a directory specified by key.
@@ -145,8 +144,8 @@ pub trait Store {
     fn listdir_keys_deep(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
         let keys = self.listdir_keys(key)?;
         let mut keys_deep = keys.clone();
-        for sub_key in keys{
-            if self.is_dir(&key){
+        for sub_key in keys {
+            if self.is_dir(&key) {
                 let sub = self.listdir_keys_deep(&sub_key)?;
                 keys_deep.extend(sub.into_iter());
             }
@@ -286,7 +285,7 @@ impl Store for FileStore {
     }
     fn get(&self, key: &Key) -> Result<(Vec<u8>, Metadata), StoreError> {
         let data = self.get_bytes(key)?;
-        match self.get_metadata(key){
+        match self.get_metadata(key) {
             Ok(metadata) => Ok((data, metadata)),
             Err(_) => Ok((data, Metadata::MetadataRecord(MetadataRecord::new()))),
         }
@@ -413,9 +412,8 @@ impl Store for FileStore {
 
     fn makedir(&self, key: &Key) -> Result<(), StoreError> {
         let path = self.key_to_path(key);
-        std::fs::create_dir_all(path).map_err(|_| {
-            StoreError::KeyWriteError(key.to_owned(), self.store_name())
-        })?;
+        std::fs::create_dir_all(path)
+            .map_err(|_| StoreError::KeyWriteError(key.to_owned(), self.store_name()))?;
         Ok(())
     }
 
@@ -427,11 +425,10 @@ impl Store for FileStore {
 // Unittests
 #[cfg(test)]
 mod tests {
-//    use crate::query::Key;
+    //    use crate::query::Key;
 
-//    use super::*;
+    //    use super::*;
 
     #[test]
-    fn test() {
-    }
+    fn test() {}
 }

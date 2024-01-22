@@ -12,7 +12,7 @@ use nom::character::{is_alphabetic, is_alphanumeric};
 use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::*;
 
-use crate::error::Error;
+use crate::error::{Error, ErrorType};
 use crate::query::{
     ActionParameter, ActionRequest, HeaderParameter, Key, Position, Query, QuerySegment,
     ResourceName, ResourceQuerySegment, SegmentHeader, TransformQuerySegment,
@@ -499,28 +499,34 @@ fn parse_action_path(text: Span) -> IResult<Span, Vec<ActionRequest>> {
 */
 
 pub fn parse_query(query: &str) -> Result<Query, Error> {
-    let (remainder, path) = query_parser(Span::new(query)).map_err(|e| Error::General {
-        message: format!("Parse error {}", e),
+    let (remainder, path) = query_parser(Span::new(query)).map_err(|e| {
+        let message = format!("{}", e);
+        Error::query_parse_error(query, &message, &Position::unknown())
     })?;
     if remainder.fragment().len() > 0 {
-        Err(Error::ParseError {
-            message: format!("Can't parse query completely: '{}'", remainder.fragment()),
-            position: remainder.into(),
-        })
+        let position: Position = remainder.into();
+        Err(Error::query_parse_error(
+            query,
+            "Can't parse query completely",
+            &position,
+        ))
     } else {
         Ok(path)
     }
 }
 
 pub fn parse_key<S: AsRef<str>>(key: S) -> Result<Key, Error> {
-    let (remainder, path) = resource_path(Span::new(key.as_ref())).map_err(|e| Error::General {
-        message: format!("Key parsing error {}", e),
+    let (remainder, path) = resource_path(Span::new(key.as_ref())).map_err(|e| {
+        let em = format!("{}", e);
+        Error::key_parse_error(key.as_ref(), &em, &Position::unknown())
     })?;
     if remainder.fragment().len() > 0 {
-        Err(Error::ParseError {
-            message: format!("Can't parse key completely: '{}'", remainder.fragment()),
-            position: remainder.into(),
-        })
+        let position: Position = remainder.into();
+        Err(Error::key_parse_error(
+            remainder.fragment(),
+            "Can't parse completely",
+            &position,
+        ))
     } else {
         Ok(Key(path))
     }
@@ -678,7 +684,12 @@ mod tests {
         assert_eq!(q.segments.len(), 2);
         assert_eq!(q.encode(), "-R/-/dr");
         assert_eq!(
-            q.segments[0].resource_query_segment().unwrap().header.unwrap().encode(),
+            q.segments[0]
+                .resource_query_segment()
+                .unwrap()
+                .header
+                .unwrap()
+                .encode(),
             "-R"
         );
         Ok(())
@@ -689,7 +700,12 @@ mod tests {
         assert_eq!(q.segments.len(), 2);
         assert_eq!(q.encode(), "-R-meta/-/dr");
         assert_eq!(
-            q.segments[0].resource_query_segment().unwrap().header.unwrap().encode(),
+            q.segments[0]
+                .resource_query_segment()
+                .unwrap()
+                .header
+                .unwrap()
+                .encode(),
             "-R-meta"
         );
         Ok(())
@@ -844,7 +860,6 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
     fn predecessor2() -> Result<(), Error> {
         let q = parse_query("-R/abc/def/-x/ghi/jkl/file.txt")?;
@@ -908,7 +923,6 @@ mod tests {
         Ok(())
     }
 
-   
     #[test]
     fn all_predecessors1() -> Result<(), Error> {
         let p: Vec<_> = parse_query("ghi/jkl/file.txt")?
@@ -922,7 +936,14 @@ mod tests {
             .iter()
             .map(|(_x, y)| y.as_ref().map(|xx| xx.encode()))
             .collect();
-        assert_eq!(r, vec![None, Some("file.txt".to_owned()), Some("jkl/file.txt".to_owned())]);
+        assert_eq!(
+            r,
+            vec![
+                None,
+                Some("file.txt".to_owned()),
+                Some("jkl/file.txt".to_owned())
+            ]
+        );
         Ok(())
     }
 
@@ -944,14 +965,22 @@ mod tests {
             .iter()
             .map(|(x, y)| format!("{} - {}", x.encode(), y.encode()))
             .collect();
-        assert_eq!(p, vec!["-R/xxx/yyy/-/ghi/jkl - -/file.txt", "-R/xxx/yyy/-/ghi - -/jkl", "-R/xxx/yyy - -/ghi", " - -R/xxx/yyy"]);
+        assert_eq!(
+            p,
+            vec![
+                "-R/xxx/yyy/-/ghi/jkl - -/file.txt",
+                "-R/xxx/yyy/-/ghi - -/jkl",
+                "-R/xxx/yyy - -/ghi",
+                " - -R/xxx/yyy"
+            ]
+        );
         Ok(())
     }
 
     #[test]
-    fn predecessor_add_filename1()-> Result<(), Error> {
+    fn predecessor_add_filename1() -> Result<(), Error> {
         let q = parse_query("ghi/jkl/file.txt")?;
-        if let (Some(p), Some(r)) = q.predecessor(){
+        if let (Some(p), Some(r)) = q.predecessor() {
             let tp = p.segments[0].transform_query_segment().unwrap();
             let tr = r.transform_query_segment().unwrap();
             assert_eq!(tp.encode(), "ghi/jkl");
@@ -962,8 +991,7 @@ mod tests {
             println!("pr: {:#?}", &pr);
             assert!(pr.filename.is_some());
             assert_eq!(pr.encode(), "ghi/jkl/file.txt");
-        }
-        else{
+        } else {
             assert!(false);
         }
 

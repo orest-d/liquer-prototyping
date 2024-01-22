@@ -2,7 +2,7 @@ use serde_json;
 
 use std::{borrow::Cow, collections::BTreeMap, result::Result};
 
-use crate::error::Error;
+use crate::error::{Error, ErrorType};
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -36,31 +36,37 @@ pub trait ValueInterface: Clone {
     fn from_i32(n: i32) -> Self;
 
     /// From integer string
-    fn from_i32_str(n: &str) -> Result<Self, Error>{
-        n.parse::<i32>().map(|x| Self::from_i32(x)).map_err(|_| Error::conversion_error(n, "i32"))
+    fn from_i32_str(n: &str) -> Result<Self, Error> {
+        n.parse::<i32>()
+            .map(|x| Self::from_i32(x))
+            .map_err(|_| Error::conversion_error(n, "i32"))
     }
 
     /// From integer
     fn from_i64(n: i64) -> Self;
 
     /// From integer string
-    fn from_i64_str(n: &str) -> Result<Self, Error>{
-        n.parse::<i64>().map(|x| Self::from_i64(x)).map_err(|_| Error::conversion_error(n, "i64"))
+    fn from_i64_str(n: &str) -> Result<Self, Error> {
+        n.parse::<i64>()
+            .map(|x| Self::from_i64(x))
+            .map_err(|_| Error::conversion_error(n, "i64"))
     }
 
     /// From float
     fn from_f64(n: f64) -> Self;
 
     /// From float string
-    fn from_f64_str(n: &str) -> Result<Self, Error>{
-        n.parse::<f64>().map(|x| Self::from_f64(x)).map_err(|_| Error::conversion_error(n, "f64"))
+    fn from_f64_str(n: &str) -> Result<Self, Error> {
+        n.parse::<f64>()
+            .map(|x| Self::from_f64(x))
+            .map_err(|_| Error::conversion_error(n, "f64"))
     }
 
     /// From boolean
     fn from_bool(b: bool) -> Self;
 
     /// From boolean string
-    fn from_bool_str(b: &str) -> Result<Self, Error>{
+    fn from_bool_str(b: &str) -> Result<Self, Error> {
         match b.to_lowercase().as_str() {
             "true" => Ok(Self::from_bool(true)),
             "t" => Ok(Self::from_bool(true)),
@@ -148,13 +154,15 @@ impl ValueInterface for Value {
         }
     }
 
-    fn try_into_json_value(&self) -> Result<serde_json::Value, Error>{
+    fn try_into_json_value(&self) -> Result<serde_json::Value, Error> {
         match self {
             Value::None => Ok(serde_json::Value::Null),
             Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
             Value::I32(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
             Value::I64(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
-            Value::F64(n) => Ok(serde_json::Value::Number(serde_json::Number::from_f64(*n).unwrap())),
+            Value::F64(n) => Ok(serde_json::Value::Number(
+                serde_json::Number::from_f64(*n).unwrap(),
+            )),
             Value::Text(t) => Ok(serde_json::Value::String(t.to_owned())),
             Value::Array(a) => {
                 let mut v = Vec::new();
@@ -162,14 +170,14 @@ impl ValueInterface for Value {
                     v.push(x.try_into_json_value()?);
                 }
                 Ok(serde_json::Value::Array(v))
-            },
+            }
             Value::Object(o) => {
                 let mut m = serde_json::Map::new();
                 for (k, v) in o {
                     m.insert(k.to_owned(), v.try_into_json_value()?);
                 }
                 Ok(serde_json::Value::Object(m))
-            },
+            }
             _ => Err(Error::conversion_error(self.identifier(), "JSON value")),
         }
     }
@@ -281,8 +289,7 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::I32(x) => Ok(x),
-            Value::I64(x) => i32::try_from(x).map_err(|e| Error::
-                conversion_error("I64", "i32")),
+            Value::I64(x) => i32::try_from(x).map_err(|e| Error::conversion_error("I64", "i32")),
             _ => Err(Error::conversion_error(value.type_name(), "i32")),
         }
     }
@@ -339,7 +346,7 @@ impl TryFrom<Value> for bool {
         match value {
             Value::I32(x) => Ok(x != 0),
             Value::I64(x) => Ok(x != 0),
-            _ => Err(Error::conversion_error(value.type_name(), "bool"))
+            _ => Err(Error::conversion_error(value.type_name(), "bool")),
         }
     }
 }
@@ -357,10 +364,7 @@ impl TryFrom<Value> for String {
             Value::I32(x) => Ok(format!("{}", x)),
             Value::I64(x) => Ok(format!("{}", x)),
             Value::F64(x) => Ok(format!("{}", x)),
-            _ => Err(Error::ConversionError {
-                message: format!("Can't convert {} to string", value.type_name()),
-                position: Default::default(),
-            }),
+            _ => Err(Error::conversion_error(value.type_name(), "string")),
         }
     }
 }
@@ -387,9 +391,8 @@ where
 impl ValueSerializer for Value {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error> {
         match format {
-            "json" => serde_json::to_vec(self).map_err(|e| Error::SerializationError {
-                message: format!("JSON error {}", e),
-                format: format.to_owned(),
+            "json" => serde_json::to_vec(self).map_err(|e| {
+                Error::new(ErrorType::SerializationError, format!("JSON error {}", e))
             }),
             "txt" | "html" => match self {
                 Value::None => Ok("none".as_bytes().to_vec()),
@@ -399,31 +402,33 @@ impl ValueSerializer for Value {
                 Value::I64(x) => Ok(format!("{x}").into_bytes()),
                 Value::F64(x) => Ok(format!("{x}").into_bytes()),
                 Value::Text(x) => Ok(x.as_bytes().to_vec()),
-                _ => Err(Error::SerializationError {
-                    message: format!(
+                _ => Err(Error::new(
+                    ErrorType::SerializationError,
+                    format!(
                         "Serialization to {} not supported by {}",
                         format,
                         self.type_name()
                     ),
-                    format: format.to_owned(),
-                }),
+                )),
             },
-            _ => Err(Error::SerializationError {
-                message: format!("Unsupported format {}", format),
-                format: format.to_owned(),
-            }),
+            _ => Err(Error::new(
+                ErrorType::SerializationError,
+                format!("Unsupported format {}", format),
+            )),
         }
     }
-    fn from_bytes(b: &[u8], format: &str) -> Result<Self, Error> {
-        match format {
-            "json" => serde_json::from_slice(b).map_err(|e| Error::SerializationError {
-                message: format!("JSON error {}", e),
-                format: format.to_owned(),
+    fn from_bytes(b: &[u8], fmt: &str) -> Result<Self, Error> {
+        match fmt {
+            "json" => serde_json::from_slice(b).map_err(|e| {
+                Error::new(
+                    ErrorType::SerializationError,
+                    format!("JSON error in from_bytes:{}", e),
+                )
             }),
-            _ => Err(Error::SerializationError {
-                message: format!("Unsupported format {}", format),
-                format: format.to_owned(),
-            }),
+            _ => Err(Error::new(
+                ErrorType::SerializationError,
+                format!("Unsupported format in from_bytes:{}", fmt),
+            )),
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::command_metadata::{
     self, ArgumentInfo, ArgumentType, CommandMetadata, CommandMetadataRegistry, DefaultValue,
     EnumArgumentType,
 };
-use crate::error::Error;
+use crate::error::{Error, ErrorType};
 use crate::query::{
     ActionParameter, ActionRequest, Key, Position, Query, QuerySegment, ResourceName,
     ResourceQuerySegment,
@@ -108,9 +108,9 @@ impl<'c> PlanBuilder<'c> {
                 match x {
                     ActionParameter::String(s, _) => namespaces.push(s.to_string()),
                     _ => {
-                        return Err(Error::NotSupported {
-                            message: "Only string parameters are supported in ns".into(),
-                        })
+                        return Err(Error::not_supported(
+                            "Only string parameters are supported in ns".into(),
+                        ));
                     }
                 }
             }
@@ -136,13 +136,7 @@ impl<'c> PlanBuilder<'c> {
         ) {
             Ok(command_metadata.clone())
         } else {
-            Err(Error::ActionNotRegistered {
-                message: format!(
-                    "Action '{}' not registered in namespaces {}",
-                    action_request.name,
-                    namespaces.iter().map(|ns| format!("'{}'", ns)).join(", ")
-                ),
-            })
+            Err(Error::action_not_registered(action_request, &namespaces))
         }
     }
 
@@ -219,9 +213,10 @@ impl<'c> PlanBuilder<'c> {
                             .push(Step::Filename(tqs.filename.as_ref().unwrap().clone()));
                         return Ok(());
                     }
-                    return Err(Error::NotSupported {
-                        message: format!("Unexpected query segment '{}'", qs.encode()),
-                    });
+                    return Err(Error::not_supported(format!(
+                        "Unexpected query segment '{}'",
+                        qs.encode()
+                    )));
                 }
             }
         }
@@ -286,9 +281,9 @@ impl<'c> PlanBuilder<'c> {
                 }
             }
             (ArgumentType::Any, Some(x)) => Ok(x),
-            (ArgumentType::None, Some(_)) => Err(Error::NotSupported {
-                message: "None not supported".into(),
-            }),
+            (ArgumentType::None, Some(_)) => Err(Error::not_supported(format!(
+                "None not supported as argument type"
+            ))),
         }
     }
     fn get_parameters(
@@ -338,8 +333,6 @@ impl Plan {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use crate::command_metadata::*;
@@ -357,13 +350,19 @@ mod tests {
             .unwrap();
         println!("plan: {:?}", plan);
         print!("");
-        println!("plan.yaml:\n{}",serde_yaml::to_string(&plan).unwrap());
+        println!("plan.yaml:\n{}", serde_yaml::to_string(&plan).unwrap());
         print!("");
-        println!("command_registry.yaml:\n{}",serde_yaml::to_string(&cr).unwrap());
+        println!(
+            "command_registry.yaml:\n{}",
+            serde_yaml::to_string(&cr).unwrap()
+        );
         print!("");
-        println!("plan.json:\n{}",serde_json::to_string(&plan).unwrap());
+        println!("plan.json:\n{}", serde_json::to_string(&plan).unwrap());
         print!("");
-        println!("command_registry.json:\n{}",serde_json::to_string(&cr).unwrap());
+        println!(
+            "command_registry.json:\n{}",
+            serde_json::to_string(&cr).unwrap()
+        );
         print!("");
     }
 }

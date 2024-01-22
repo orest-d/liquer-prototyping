@@ -1,7 +1,8 @@
 use serde_json::{self, Value};
 
+use crate::error::Error;
 use crate::parse;
-use crate::query::{Query, Position, Key};
+use crate::query::{Key, Position, Query};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Status {
@@ -95,7 +96,6 @@ impl LogEntry {
         self.timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         self
     }
-
 }
 
 impl Default for LogEntry {
@@ -166,7 +166,7 @@ mod key_format {
         let s = String::deserialize(deserializer)?;
         parse::parse_key(&s).map_err(de::Error::custom)
     }
-}   
+}
 
 mod option_query_format {
     use super::*;
@@ -189,13 +189,11 @@ mod option_query_format {
         let s = String::deserialize(deserializer);
         if s.is_err() {
             return Ok(None);
-        }
-        else {
+        } else {
             let s = s.unwrap();
             if s.is_empty() {
                 return Ok(Some(Query::new()));
-            }
-            else{
+            } else {
                 return parse::parse_query(&s).map_err(de::Error::custom).map(Some);
             }
         }
@@ -225,18 +223,16 @@ mod option_key_format {
         let s = String::deserialize(deserializer);
         if s.is_err() {
             return Ok(None);
-        }
-        else {
+        } else {
             let s = s.unwrap();
             if s.is_empty() {
                 return Ok(Some(Key::new()));
-            }
-            else{
+            } else {
                 return parse::parse_key(&s).map_err(de::Error::custom).map(Some);
             }
         }
     }
-}   
+}
 
 impl MetadataRecord {
     /// Create a new empty MetadataRecord with default values
@@ -287,7 +283,6 @@ impl MetadataRecord {
         self.log = vec![];
         self
     }
-    
 }
 
 #[derive(Debug, Clone)]
@@ -306,21 +301,21 @@ impl Metadata {
             Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
                 o.insert("query".to_string(), Value::String(query.encode()));
                 self
-            },
+            }
             Metadata::MetadataRecord(m) => {
                 m.with_query(query);
                 self
-            },
+            }
             Metadata::LegacyMetadata(serde_json::Value::Null) => {
                 let mut m = MetadataRecord::new();
                 m.query = query;
                 *self = Metadata::MetadataRecord(m);
                 self
-            },
+            }
 
             _ => {
                 panic!("Cannot set query on unsupported legacy metadata")
-            },
+            }
         }
     }
 
@@ -373,39 +368,41 @@ impl Metadata {
                 if let Some(Value::String(query)) = o.get("query") {
                     return parse::parse_query(query);
                 }
-                return Err(crate::error::Error::General {
-                    message: "Query not found".to_string(),
-                });
+                return Err(Error::general_error(
+                    "Query not found in legacy metadata".to_string(),
+                ));
             }
             Metadata::MetadataRecord(m) => Ok(m.query.to_owned()),
-            _ => Err(crate::error::Error::General {
-                message: "Query not found in unsupported legacy metadata".to_string(),
-            }),
+            _ => Err(Error::general_error(
+                "Query not found in unsupported legacy metadata".to_string(),
+            )),
         }
     }
     pub fn with_type_identifier(&mut self, type_identifier: String) -> &mut Self {
         match self {
             Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
-                o.insert("type_identifier".to_string(), Value::String(type_identifier));
+                o.insert(
+                    "type_identifier".to_string(),
+                    Value::String(type_identifier),
+                );
                 self
-            },
+            }
             Metadata::MetadataRecord(m) => {
                 m.with_type_identifier(type_identifier);
                 self
-            },
+            }
             Metadata::LegacyMetadata(serde_json::Value::Null) => {
                 let mut m = MetadataRecord::new();
                 m.type_identifier = type_identifier;
                 *self = Metadata::MetadataRecord(m);
                 self
-            },
+            }
 
             _ => {
                 panic!("Cannot set type_identifier on unsupported legacy metadata")
-            },
+            }
         }
     }
-
 }
 
 impl From<MetadataRecord> for Metadata {
