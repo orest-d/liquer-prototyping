@@ -51,9 +51,30 @@ impl Step {
     }
 }
 
-//TODO: Add position and default flag
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Parameter(pub Value);
+pub struct Parameter{
+    pub value:Value,
+    pub position:Position,
+    pub default:bool
+}
+
+impl Parameter {
+    
+}
+impl Display for Parameter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.value, self.position)
+    }
+}
+impl Default for Parameter {
+    fn default() -> Self {
+        Parameter {
+            value: Value::Null,
+            position: Position::unknown(),
+            default: false,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResolvedParameters {
@@ -227,26 +248,26 @@ impl<'c> PlanBuilder<'c> {
         &mut self,
         arginfo: &ArgumentInfo,
         action_request: &ActionRequest,
-    ) -> Result<Option<Value>, Error> {
+    ) -> Result<(Option<Value>,bool), Error> {
         match action_request.parameters.get(self.parameter_number) {
             Some(ActionParameter::String(v, _)) => {
                 self.parameter_number += 1;
-                Ok(Some(Value::String(v.to_owned())))
+                Ok((Some(Value::String(v.to_owned())),false))
             }
             Some(ActionParameter::Link(q, _)) => {
                 self.resolved_parameters
                     .links
                     .push((self.resolved_parameters.parameters.len(), q.clone()));
                 self.parameter_number += 1;
-                Ok(None)
+                Ok((None,false))
             }
             None => match &arginfo.default {
-                DefaultValue::Value(v) => Ok(Some(v.clone())),
+                DefaultValue::Value(v) => Ok((Some(v.clone()),true)),
                 DefaultValue::Query(q) => {
                     self.resolved_parameters
                         .links
                         .push((self.resolved_parameters.parameters.len(), q.clone()));
-                    Ok(None)
+                    Ok((None,true))
                 }
                 DefaultValue::NoDefault => Err(Error::missing_argument(
                     self.arginfo_number,
@@ -266,22 +287,22 @@ impl<'c> PlanBuilder<'c> {
             &arginfo.argument_type,
             self.pop_action_parameter(arginfo, action_request)?,
         ) {
-            (_, None) => Ok(Value::Null),
-            (ArgumentType::String, Some(x)) => Ok(Value::String(x.to_string())),
-            (ArgumentType::Integer, Some(x)) => Ok(x),
-            (ArgumentType::IntegerOption, Some(x)) => Ok(x),
-            (ArgumentType::Float, Some(x)) => Ok(x),
-            (ArgumentType::FloatOption, Some(x)) => Ok(x),
-            (ArgumentType::Boolean, Some(x)) => Ok(x),
-            (ArgumentType::Enum(e), Some(x)) => {
+            (_, (None,is_default)) => Ok(Value::Null),
+            (ArgumentType::String, (Some(x), is_default)) => Ok(Value::String(x.to_string())),
+            (ArgumentType::Integer, (Some(x), is_default)) => Ok(x),
+            (ArgumentType::IntegerOption, (Some(x), is_default)) => Ok(x),
+            (ArgumentType::Float, (Some(x), is_default)) => Ok(x),
+            (ArgumentType::FloatOption, (Some(x),is_default)) => Ok(x),
+            (ArgumentType::Boolean, (Some(x), is_default)) => Ok(x),
+            (ArgumentType::Enum(e), (Some(x), is_default)) => {
                 if let Some(xx) = e.name_to_value(x.to_string()) {
                     Ok(xx)
                 } else {
                     Err(Error::conversion_error(x, &e.name))
                 }
             }
-            (ArgumentType::Any, Some(x)) => Ok(x),
-            (ArgumentType::None, Some(_)) => Err(Error::not_supported(format!(
+            (ArgumentType::Any, (Some(x),is_default)) => Ok(x),
+            (ArgumentType::None, (Some(_), _)) => Err(Error::not_supported(format!(
                 "None not supported as argument type"
             ))),
         }
@@ -297,7 +318,13 @@ impl<'c> PlanBuilder<'c> {
         for (i, a) in command_metadata.arguments.iter().enumerate() {
             self.arginfo_number = i;
             let value = self.pop_value(a, action_request)?;
-            self.resolved_parameters.parameters.push(Parameter(value));
+            self.resolved_parameters.parameters.push(
+                Parameter{
+                    value:value,
+                    position:Position::unknown(),//TODO: Get the position from ActionParameter
+                    //action_request.parameters[self.parameter_number].position(),
+                    default: false //TODO: set default properly
+                });
         }
         Ok(())
     }

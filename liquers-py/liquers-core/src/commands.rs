@@ -79,11 +79,11 @@ pub trait FromParameter<T, Injection> {
 
 impl<I> FromParameter<String, I> for String {
     fn from_parameter(param: &Parameter, _injection: &I) -> Result<String, Error> {
-        if let Some(p) = param.0.as_str() {
+        if let Some(p) = param.value.as_str() {
             Ok(p.to_owned())
         } else {
             //TODO: Use position from parameter
-            Err(Error::conversion_error(param.0.clone(), "string"))
+            Err(Error::conversion_error(param.value.clone(), "string"))
         }
     }
 }
@@ -95,14 +95,14 @@ mod tests {
 
     #[test]
     fn first_test() {
-        let p = Parameter("Hello".into());
+        let p = Parameter{value:"Hello".into(), ..Parameter::default()};
         let s: String = String::from_parameter(&p, &NoInjection).unwrap();
         assert_eq!(s, "Hello");
     }
     #[test]
     fn test_command_arguments() {
         let mut rp = ResolvedParameters::new();
-        rp.parameters.push(Parameter("Hello".into()));
+        rp.parameters.push(Parameter{value:"Hello".into(), ..Parameter::default()});
         let mut ca = CommandArguments::new(rp, &NoInjection);
         let s: String = ca.get().unwrap();
         assert_eq!(s, "Hello");
