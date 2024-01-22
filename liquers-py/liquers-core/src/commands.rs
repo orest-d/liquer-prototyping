@@ -1,6 +1,6 @@
 use std::result;
 
-use crate::command_metadata_registry::CommandMetadata;
+use crate::command_metadata::CommandMetadata;
 use crate::error::Error;
 use crate::plan::{ResolvedParameters, Parameter};
 use crate::query::Position;

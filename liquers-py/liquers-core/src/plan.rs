@@ -4,7 +4,7 @@ use itertools::Itertools;
 use nom::Err;
 use serde_json::Value;
 
-use crate::command_metadata_registry::{
+use crate::command_metadata::{
     self, ArgumentInfo, ArgumentType, CommandMetadata, CommandMetadataRegistry, DefaultValue,
     EnumArgumentType,
 };
@@ -342,7 +342,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use crate::command_metadata_registry::*;
+    use crate::command_metadata::*;
     use crate::parse::parse_query;
     use serde_yaml;
 
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn first_test() {
-        let mut cr = command_metadata_registry::CommandMetadataRegistry::new();
+        let mut cr = command_metadata::CommandMetadataRegistry::new();
         cr.add_command(CommandMetadata::new("a").with_argument(ArgumentInfo::any_argument("a")));
         let plan = PlanBuilder::new(parse_query("a-1").unwrap(), &cr)
             .build()
