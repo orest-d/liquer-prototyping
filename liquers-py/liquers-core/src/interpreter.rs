@@ -59,7 +59,8 @@ impl<I,V:ValueInterface, CE:CommandExecutor<I,V>> PlanInterpreter<I,V,CE> {
                     crate::plan::Step::Action { realm, ns, action_name, position, parameters } => {
                         let mut arguments = CommandArguments::new(parameters.clone(), &self.injection);
                         arguments.action_position = position.clone();
-                        let state = self.command_executor.execute(&realm, ns, &action_name, arguments)?;
+                        let input_state = self.state.take().unwrap_or(State::new());
+                        let state = self.command_executor.execute(&realm, ns, &action_name, &input_state, arguments)?;
                         self.state.replace(state);
                     },
                     crate::plan::Step::Filename(name) => {self.metadata.as_mut().unwrap().with_filename(name.name.clone());},
@@ -96,12 +97,13 @@ mod tests {
             realm: &str,
             namespace: &str,
             command_name: &str,
+            state: &State<Value>,
             arguments: CommandArguments<NoInjection>,
         ) -> Result<State<Value>, Error> {
             assert_eq!(realm,"");
             assert_eq!(namespace,"root");
             assert_eq!(command_name,"test");
-            (|| -> String { "Hello".into() }).execute(arguments)
+            (|| -> String { "Hello".into() }).execute(state, arguments)
         }
     }
     #[test]

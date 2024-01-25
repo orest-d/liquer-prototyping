@@ -47,7 +47,7 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
 /// This trait encapsulates a command that can be executed,
 /// typically a function
 pub trait Command<Injection, V: ValueInterface> {
-    fn execute(&mut self, arguments: CommandArguments<Injection>) -> Result<State<V>, Error>;
+    fn execute(&mut self, state: &State<V>, arguments: CommandArguments<Injection>) -> Result<State<V>, Error>;
 
     /// Returns the default metadata of the command
     /// This may be modified or overriden inside the command registry
@@ -61,7 +61,7 @@ where
     F: FnMut() -> R,
     V: ValueInterface + From<R>,
 {
-    fn execute(&mut self, arguments: CommandArguments<Injection>) -> Result<State<V>, Error> {
+    fn execute(&mut self, _state:&State<V>, arguments: CommandArguments<Injection>) -> Result<State<V>, Error> {
         if arguments.has_no_parameters() {
             let result = self();
             Ok(State::new().with_data(V::from(result)))
@@ -95,6 +95,7 @@ pub trait CommandExecutor<Injection, V: ValueInterface> {
         realm: &str,
         namespace: &str,
         command_name: &str,
+        state: &State<V>,
         arguments: CommandArguments<Injection>,
     ) -> Result<State<V>, Error>;
 }
@@ -105,11 +106,12 @@ impl<I,V:ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn C
         realm: &str,
         namespace: &str,
         command_name: &str,
+        state: &State<V>,
         arguments: CommandArguments<I>,
     ) -> Result<State<V>, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.get_mut(&key) {
-            command.execute(arguments)
+            command.execute(state, arguments)
         } else {
             Err(Error::unknown_command_executor(
                 realm,
@@ -123,7 +125,7 @@ impl<I,V:ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn C
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Value;
+    use crate::{value::Value, state};
 
     struct TestExecutor;
     impl CommandExecutor<NoInjection,Value> for TestExecutor {
@@ -132,12 +134,14 @@ mod tests {
             realm: &str,
             namespace: &str,
             command_name: &str,
+            state: &State<Value>,
             arguments: CommandArguments<NoInjection>,
         ) -> Result<State<Value>, Error> {
             assert_eq!(realm,"");
             assert_eq!(namespace,"");
             assert_eq!(command_name,"test");
-            (|| -> String { "Hello".into() }).execute(arguments)
+            assert!(state.data.is_none());
+            (|| -> String { "Hello".into() }).execute(state, arguments)
         }
     }
     #[test]
@@ -164,7 +168,8 @@ mod tests {
     fn test_execute_command() -> Result<(), Error> {
         let mut c = || -> String { "Hello".into() };
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = c.execute(ca).unwrap();
+        let state = State::new();
+        let s: State<Value> = c.execute(&state, ca).unwrap();
         assert_eq!(s.data.try_into_string()?, "Hello");
         Ok(())
     }
@@ -172,7 +177,8 @@ mod tests {
     #[test]
     fn test_command_executor()->Result<(),Error>{
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = TestExecutor.execute("", "", "test", ca).unwrap();
+        let state = State::new();
+        let s: State<Value> = TestExecutor.execute("", "", "test", &state, ca).unwrap();
         assert_eq!(s.data.try_into_string()?, "Hello");
         Ok(())
     }
@@ -182,11 +188,12 @@ mod tests {
         hm.insert(CommandKey::new("", "", "test"), Box::new(|| -> String { "Hello1".into() }));
         hm.insert(CommandKey::new("", "", "test2"), Box::new(|| -> String { "Hello2".into() }));
 
+        let state = State::new();
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = hm.execute("", "", "test", ca).unwrap();
+        let s: State<Value> = hm.execute("", "", "test", &state, ca).unwrap();
         assert_eq!(s.data.try_into_string()?, "Hello1");
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = hm.execute("", "", "test2", ca).unwrap();
+        let s: State<Value> = hm.execute("", "", "test2",  &state, ca).unwrap();
         assert_eq!(s.data.try_into_string()?, "Hello2");
         Ok(())
     }
