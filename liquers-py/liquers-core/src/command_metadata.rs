@@ -67,6 +67,11 @@ impl Default for EnumArgumentType {
     }
 }
 
+/// Enum argument type specification
+/// EnumArgument specifies string aliases for values via vector of EnumArgumentAlternative.
+/// Besides alternatives (values) EnumArgument has name and a value type.
+/// If others_allowed is false, then only the values from the vector 'values' are allowed.
+/// If others_allowed is true, then any value is allowed, but it must conform to the value_type.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnumArgument {
     pub name: String,
@@ -323,6 +328,29 @@ impl ArgumentInfo {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct CommandKey{
+    pub realm: String,
+    pub namespace: String,
+    pub name: String
+}
+
+impl CommandKey {
+    pub fn new(realm:&str, namespace:&str, name:&str)->Self{
+        CommandKey{
+            realm:realm.to_owned(),
+            namespace: namespace.to_owned(),
+            name: name.to_owned()
+        }
+    }
+}
+
+    
+// TODO: support input type
+// TODO: support output type
+// TODO: support cache and volatile flags
+/// CommandMetadata describes a command.
+/// It does not specify how to execute the command though, this is the role of a CommandExecutor.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CommandMetadata {
     pub realm: String,
@@ -397,6 +425,7 @@ impl CommandMetadata {
     }
 }
 
+// TODO: support global enums
 /// Command registry is a structure holding description (metadata) of all commands available in the system
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommandMetadataRegistry {

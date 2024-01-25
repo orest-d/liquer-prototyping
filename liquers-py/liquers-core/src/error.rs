@@ -3,6 +3,7 @@ use itertools::Itertools;
 use crate::query::ActionRequest;
 use crate::query::Position;
 use std::error;
+use std::f64::consts::E;
 use std::fmt;
 use std::fmt::Display;
 
@@ -18,6 +19,7 @@ pub enum ErrorType {
     SerializationError,
     General,
     CacheNotSupported,
+    UnknownCommand,
     NotSupported,
 }
 
@@ -123,6 +125,15 @@ impl Error {
             error_type: ErrorType::General,
             message: message,
             position: Position::unknown(),
+            query: None,
+        }
+    }
+
+    pub(crate) fn unknown_command_executor(realm: &str, namespace: &str, command_name: &str, action_position: &Position) -> Error {
+        Error {
+            error_type: ErrorType::UnknownCommand,
+            message: format!("Unknown command executor - realm:'{}' namespace:'{}' command:'{}'", realm, namespace, command_name),
+            position: action_position.clone(),
             query: None,
         }
     }
