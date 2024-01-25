@@ -124,6 +124,7 @@ pub struct MetadataRecord {
     pub message: String,
     pub is_error: bool,
     pub media_type: String,
+    pub filename: Option<String>
 }
 
 mod query_format {
@@ -279,8 +280,29 @@ impl MetadataRecord {
         self.log.push(log_entry);
         self
     }
+    pub fn with_filename(&mut self, filename: String) -> &mut Self {
+        self.filename = Some(filename);
+        //TODO: set media_type from filename extension
+        self
+    }
     pub fn clean_log(&mut self) -> &mut Self {
         self.log = vec![];
+        self
+    }
+    pub fn info(&mut self, message: &str) -> &mut Self {
+        self.add_log_entry(LogEntry::info(message.to_owned()));
+        self
+    }
+    pub fn debug(&mut self, message: &str) -> &mut Self {
+        self.add_log_entry(LogEntry::debug(message.to_owned()));
+        self
+    }
+    pub fn warning(&mut self, message: &str) -> &mut Self {
+        self.add_log_entry(LogEntry::warning(message.to_owned()));
+        self
+    }
+    pub fn error(&mut self, message: &str) -> &mut Self {
+        self.add_log_entry(LogEntry::error(message.to_owned()));
         self
     }
 }

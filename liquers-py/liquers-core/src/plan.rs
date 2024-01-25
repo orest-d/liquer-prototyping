@@ -93,7 +93,7 @@ impl ResolvedParameters {
     }
 }
 
-struct PlanBuilder<'c> {
+pub struct PlanBuilder<'c> {
     query: Query,
     command_registry: &'c CommandMetadataRegistry,
     resolved_parameters: ResolvedParameters,
@@ -103,7 +103,7 @@ struct PlanBuilder<'c> {
 }
 
 impl<'c> PlanBuilder<'c> {
-    fn new(query: Query, command_registry: &'c CommandMetadataRegistry) -> Self {
+    pub fn new(query: Query, command_registry: &'c CommandMetadataRegistry) -> Self {
         PlanBuilder {
             query,
             command_registry,
@@ -114,7 +114,7 @@ impl<'c> PlanBuilder<'c> {
         }
     }
 
-    fn build(&mut self) -> Result<Plan, Error> {
+    pub fn build(&mut self) -> Result<Plan, Error> {
         let query = self.query.clone();
         self.process_query(&query)?;
         Ok(self.plan.clone())
@@ -335,8 +335,8 @@ impl<'c> PlanBuilder<'c> {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Plan {
-    query: Query,
-    steps: Vec<Step>,
+    pub query: Query,
+    pub steps: Vec<Step>,
 }
 
 impl Plan {
