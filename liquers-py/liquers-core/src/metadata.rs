@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use serde_json::{self, Value};
 
 use crate::error::Error;

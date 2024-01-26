@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::error::Error;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -164,7 +167,7 @@ mod tests {
     #[test]
     fn test_memory_cache_threaded() -> Result<(), Error> {
         let key = parse_query("-R/key")?;
-        let mut cache = MemoryBinCache::new();
+        let cache = MemoryBinCache::new();
         assert!(cache.get_binary(&key).is_none());
         let cache = Arc::new(Mutex::new(cache));
         let c1 = cache.clone();

@@ -92,6 +92,14 @@ impl Error {
             query: None,
         }
     }
+    pub fn conversion_error_with_message<W: Display, T: Display>(what: W, to: T, message:&str) -> Self {
+        Error {
+            error_type: ErrorType::ConversionError,
+            message: format!("Can't convert '{}' to {}: {}", what, to, message),
+            position: Position::unknown(),
+            query: None,
+        }
+    }
     pub fn conversion_error_at_position<W: Display, T: Display>(
         what: W,
         to: T,

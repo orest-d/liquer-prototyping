@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use serde_json;
 
 use std::{borrow::Cow, collections::BTreeMap, result::Result};
@@ -278,7 +281,7 @@ impl TryFrom<&Value> for i32 {
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
         match value {
             Value::I32(x) => Ok(*x),
-            Value::I64(x) => i32::try_from(*x).map_err(|e| Error::conversion_error("I64", "i32")),
+            Value::I64(x) => i32::try_from(*x).map_err(|e| Error::conversion_error_with_message("I64", "i32", &e.to_string())),
             _ => Err(Error::conversion_error(value.type_name(), "i32")),
         }
     }
@@ -289,7 +292,7 @@ impl TryFrom<Value> for i32 {
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
             Value::I32(x) => Ok(x),
-            Value::I64(x) => i32::try_from(x).map_err(|e| Error::conversion_error("I64", "i32")),
+            Value::I64(x) => i32::try_from(x).map_err(|e| Error::conversion_error_with_message("I64", "i32", &e.to_string())),
             _ => Err(Error::conversion_error(value.type_name(), "i32")),
         }
     }
@@ -302,7 +305,7 @@ impl From<i32> for Value {
 }
 
 impl From<()> for Value {
-    fn from(value: ()) -> Value {
+    fn from(_value: ()) -> Value {
         Value::none()
     }
 }

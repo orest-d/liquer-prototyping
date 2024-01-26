@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use itertools::Itertools;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -1283,7 +1286,6 @@ impl Query {
     pub fn all_predecessor_tuples(&self) -> Vec<(Query, QuerySegment)> {
         let mut result = vec![];
         let mut qp = Some(self.clone());
-        let mut qr: Option<QuerySegment> = None;
         let mut last = None;
         fn add_to_result(
             result: &mut Vec<(Query, QuerySegment)>,

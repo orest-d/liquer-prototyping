@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::result;
 
-use crate::command_metadata::{CommandMetadata, CommandKey};
+use crate::command_metadata::{CommandKey, CommandMetadata};
 use crate::error::{Error, ErrorType};
 use crate::plan::{Parameter, ResolvedParameters};
 use crate::query::Position;
@@ -47,7 +48,11 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
 /// This trait encapsulates a command that can be executed,
 /// typically a function
 pub trait Command<Injection, V: ValueInterface> {
-    fn execute(&mut self, state: &State<V>, arguments: CommandArguments<Injection>) -> Result<State<V>, Error>;
+    fn execute(
+        &mut self,
+        state: &State<V>,
+        arguments: &mut CommandArguments<Injection>,
+    ) -> Result<V, Error>;
 
     /// Returns the default metadata of the command
     /// This may be modified or overriden inside the command registry
@@ -61,10 +66,106 @@ where
     F: FnMut() -> R,
     V: ValueInterface + From<R>,
 {
-    fn execute(&mut self, _state:&State<V>, arguments: CommandArguments<Injection>) -> Result<State<V>, Error> {
+    fn execute(
+        &mut self,
+        _state: &State<V>,
+        arguments: &mut CommandArguments<'_, Injection>,
+    ) -> Result<V, Error> {
         if arguments.has_no_parameters() {
             let result = self();
-            Ok(State::new().with_data(V::from(result)))
+            Ok(V::from(result))
+        } else {
+            Err(
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
+                    .with_position(&arguments.action_position),
+            )
+        }
+    }
+}
+
+pub struct Command1<S, R, F>
+where
+    F: FnMut(S) -> R,
+{
+    f: F,
+    state: PhantomData<S>,
+    result: PhantomData<R>,
+}
+
+impl<S, R, F> From<F> for Command1<S, R, F>
+where
+    F: FnMut(S) -> R,
+{
+    fn from(f: F) -> Self {
+        Command1 {
+            f,
+            state: Default::default(),
+            result: Default::default(),
+        }
+    }
+}
+
+impl<F, Injection, V, R> Command<Injection, V> for Command1<&State<V>, R, F>
+where
+    F: FnMut(&State<V>) -> R,
+    V: ValueInterface + From<R>,
+{
+    fn execute(
+        &mut self,
+        state: &State<V>,
+        arguments: &mut CommandArguments<'_, Injection>,
+    ) -> Result<V, Error> {
+        if arguments.has_no_parameters() {
+            let result = (self.f)(state);
+            Ok(V::from(result))
+        } else {
+            Err(
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
+                    .with_position(&arguments.action_position),
+            )
+        }
+    }
+}
+
+pub struct Command2<S, T, R, F>
+where
+    F: FnMut(S, T) -> R,
+{
+    f: F,
+    state: PhantomData<S>,
+    argument: PhantomData<T>,
+    result: PhantomData<R>,
+}
+
+impl<S, T, R, F> From<F> for Command2<S, T, R, F>
+where
+    F: FnMut(S, T) -> R,
+{
+    fn from(f: F) -> Self {
+        Command2 {
+            f,
+            state: Default::default(),
+            result: Default::default(),
+            argument: Default::default(),
+        }
+    }
+}
+
+impl<F, Injection, V, T, R> Command<Injection, V> for Command2<&State<V>, T, R, F>
+where
+    F: FnMut(&State<V>, T) -> R,
+    V: ValueInterface + From<R>,
+    T: FromParameter<T, Injection>,
+{
+    fn execute(
+        &mut self,
+        state: &State<V>,
+        arguments: &mut CommandArguments<'_, Injection>,
+    ) -> Result<V, Error> {
+        if arguments.has_no_parameters() {
+            let argument: T = arguments.get()?;
+            let result = (self.f)(state, argument);
+            Ok(V::from(result))
         } else {
             Err(
                 Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
@@ -96,19 +197,19 @@ pub trait CommandExecutor<Injection, V: ValueInterface> {
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: CommandArguments<Injection>,
-    ) -> Result<State<V>, Error>;
+        arguments: &mut CommandArguments<'_, Injection>,
+    ) -> Result<V, Error>;
 }
 
-impl<I,V:ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn Command<I, V>>> {
+impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn Command<I, V>>> {
     fn execute(
         &mut self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: CommandArguments<I>,
-    ) -> Result<State<V>, Error> {
+        arguments: &mut CommandArguments<I>,
+    ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.get_mut(&key) {
             command.execute(state, arguments)
@@ -125,21 +226,21 @@ impl<I,V:ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn C
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{value::Value, state};
+    use crate::{state, value::Value};
 
     struct TestExecutor;
-    impl CommandExecutor<NoInjection,Value> for TestExecutor {
+    impl CommandExecutor<NoInjection, Value> for TestExecutor {
         fn execute(
             &mut self,
             realm: &str,
             namespace: &str,
             command_name: &str,
             state: &State<Value>,
-            arguments: CommandArguments<NoInjection>,
-        ) -> Result<State<Value>, Error> {
-            assert_eq!(realm,"");
-            assert_eq!(namespace,"");
-            assert_eq!(command_name,"test");
+            arguments: &mut CommandArguments<'_, NoInjection>,
+        ) -> Result<Value, Error> {
+            assert_eq!(realm, "");
+            assert_eq!(namespace, "");
+            assert_eq!(command_name, "test");
             assert!(state.data.is_none());
             (|| -> String { "Hello".into() }).execute(state, arguments)
         }
@@ -168,33 +269,41 @@ mod tests {
     fn test_execute_command() -> Result<(), Error> {
         let mut c = || -> String { "Hello".into() };
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let state = State::new();
-        let s: State<Value> = c.execute(&state, ca).unwrap();
-        assert_eq!(s.data.try_into_string()?, "Hello");
+        let state: State<Value> = State::new();
+        let s: Value = c.execute(&state, &mut ca).unwrap();
+        assert_eq!(s.try_into_string()?, "Hello");
         Ok(())
     }
 
     #[test]
-    fn test_command_executor()->Result<(),Error>{
+    fn test_command_executor() -> Result<(), Error> {
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
         let state = State::new();
-        let s: State<Value> = TestExecutor.execute("", "", "test", &state, ca).unwrap();
-        assert_eq!(s.data.try_into_string()?, "Hello");
+        let s = TestExecutor
+            .execute("", "", "test", &state, &mut ca)
+            .unwrap();
+        assert_eq!(s.try_into_string()?, "Hello");
         Ok(())
     }
     #[test]
-    fn test_hashmap_command_executor()->Result<(),Error>{
+    fn test_hashmap_command_executor() -> Result<(), Error> {
         let mut hm = HashMap::<CommandKey, Box<dyn Command<NoInjection, Value>>>::new();
-        hm.insert(CommandKey::new("", "", "test"), Box::new(|| -> String { "Hello1".into() }));
-        hm.insert(CommandKey::new("", "", "test2"), Box::new(|| -> String { "Hello2".into() }));
+        hm.insert(
+            CommandKey::new("", "", "test"),
+            Box::new(|| -> String { "Hello1".into() }),
+        );
+        hm.insert(
+            CommandKey::new("", "", "test2"),
+            Box::new(|| -> String { "Hello2".into() }),
+        );
 
         let state = State::new();
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = hm.execute("", "", "test", &state, ca).unwrap();
-        assert_eq!(s.data.try_into_string()?, "Hello1");
+        let s = hm.execute("", "", "test", &state, &mut ca).unwrap();
+        assert_eq!(s.try_into_string()?, "Hello1");
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
-        let s: State<Value> = hm.execute("", "", "test2",  &state, ca).unwrap();
-        assert_eq!(s.data.try_into_string()?, "Hello2");
+        let s = hm.execute("", "", "test2", &state, &mut ca).unwrap();
+        assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())
     }
 }

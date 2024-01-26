@@ -1,3 +1,6 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use crate::error::Error;
 use crate::query::{ActionParameter, Query};
 use serde::{Deserialize, Serialize};
@@ -235,7 +238,7 @@ impl ArgumentInfo {
         }
     }
     fn check(&self, realm: &str, namespace: &str, name: &str) -> Vec<CommandRegistryIssue> {
-        let mut issues = Vec::new();
+        let issues = Vec::new();
         issues
     }
 
@@ -340,6 +343,13 @@ impl CommandKey {
         CommandKey{
             realm:realm.to_owned(),
             namespace: namespace.to_owned(),
+            name: name.to_owned()
+        }
+    }
+    pub fn new_name(name:&str)->Self{
+        CommandKey{
+            realm:"".to_owned(),
+            namespace: "".to_owned(),
             name: name.to_owned()
         }
     }
