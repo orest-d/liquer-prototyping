@@ -147,29 +147,19 @@ mod tests {
     }
     #[test]
     fn test_hello_world_interpreter() -> Result<(), Error> {
-        let mut cmr = CommandMetadataRegistry::new();
-        cmr.add_command(&CommandMetadata::new("hello"));
-        cmr.add_command(&CommandMetadata::new("greet")
-        .with_state_argument(ArgumentInfo::string_argument("greeting"))
-        .with_argument(ArgumentInfo::string_argument("who"))
-        );
-
-        let mut ce = HashMap::<CommandKey, Box<dyn Command<NoInjection, Value>>>::new();
-        let f = || { "Hello".to_string()};
-        let f1:Box<dyn Command::<NoInjection, Value>> = Box::new(f);
-        ce.insert(CommandKey::new_name("hello"), f1);
-
-        let f =|state:State<Value>, who:&str| -> String {
+        let mut cr:CommandRegistry<NoInjection, Value>  = CommandRegistry::new();
+        /*
+        cr.register("hello", || { "Hello".to_string()})?;
+        cr.register("greet", |state:State<Value>, who:&str| -> String {
             let greeting = state.data.try_into_string().unwrap();
             format!("{} {}!", greeting, who)
-        };
+        })?
+        .with_state_argument(ArgumentInfo::string_argument("greeting"))
+        .with_argument(ArgumentInfo::string_argument("who"));
+    */
+        let cmr = cr.command_metadata_registry.clone();
 
-//        let f2:Box<dyn Command::<NoInjection,Value>>=Box::new(
-//            Command::<NoInjection,Value>::from(f)
-//        );
-//        ce.insert(CommandKey::new_name("greet"), f2);
-
-        let mut pi = PlanInterpreter::new(cmr, NoInjection, ce);
+        let mut pi = PlanInterpreter::new(cmr, NoInjection, cr);
         pi.with_query("hello/greeting-world").unwrap();
         //println!("{:?}", pi.plan);
         pi.step()?;

@@ -331,31 +331,77 @@ impl ArgumentInfo {
     }
 }
 
+const DEFAULT_REALM: &str = "main";
+const DEFAULT_NAMESPACE: &str = "root";
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct CommandKey{
+pub struct CommandKey {
     pub realm: String,
     pub namespace: String,
-    pub name: String
+    pub name: String,
 }
 
 impl CommandKey {
-    pub fn new(realm:&str, namespace:&str, name:&str)->Self{
-        CommandKey{
-            realm:realm.to_owned(),
+    pub fn new(realm: &str, namespace: &str, name: &str) -> Self {
+        let realm = if realm == DEFAULT_REALM { "" } else { realm };
+        let namespace = if namespace == DEFAULT_NAMESPACE {
+            ""
+        } else {
+            namespace
+        };
+        CommandKey {
+            realm: realm.to_owned(),
             namespace: namespace.to_owned(),
-            name: name.to_owned()
+            name: name.to_owned(),
         }
     }
-    pub fn new_name(name:&str)->Self{
-        CommandKey{
-            realm:"".to_owned(),
+    pub fn new_name(name: &str) -> Self {
+        CommandKey {
+            realm: "".to_owned(),
             namespace: "".to_owned(),
-            name: name.to_owned()
+            name: name.to_owned(),
+        }
+    }
+}
+/*
+impl From<&CommandKey> for CommandKey {
+    fn from(key: &CommandKey) -> Self {
+        key.clone()
+    }
+}
+*/
+
+impl From<&CommandMetadata> for CommandKey {
+    fn from(command: &CommandMetadata) -> Self {
+        CommandKey::new(&command.realm, &command.namespace, command.name.as_str())
+    }
+}
+
+impl From<&CommandKey> for String {
+    fn from(key: &CommandKey) -> Self {
+        format!("-p-cmd-{}-{}-{}", key.realm, key.namespace, key.name)
+    }
+}
+
+impl From<&CommandKey> for CommandMetadata {
+    fn from(key: &CommandKey) -> Self {
+        let mut cm = CommandMetadata::new(key.name.as_str());
+        cm.with_realm(key.realm.as_str())
+            .with_namespace(key.namespace.as_str());
+        cm
+    }
+}
+
+impl From<&str> for CommandKey {
+    fn from(name: &str) -> Self {
+        CommandKey {
+            realm: "".to_string(),
+            namespace: "".to_string(),
+            name: name.to_string(),
         }
     }
 }
 
-    
 // TODO: support input type
 // TODO: support output type
 // TODO: support cache and volatile flags
@@ -429,12 +475,17 @@ impl CommandMetadata {
         self.namespace = namespace.to_string();
         self
     }
+    pub fn with_name(&mut self, name: &str) -> &mut Self {
+        self.name = name.to_string();
+        self
+    }
     pub fn with_module(&mut self, module: &str) -> &mut Self {
         self.module = module.to_string();
         self
     }
 }
 
+// TODO: Refactor CommandMetadataRegistry to use realm/ns hierarchy and CommandKey
 // TODO: support global enums
 /// Command registry is a structure holding description (metadata) of all commands available in the system
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -452,6 +503,31 @@ impl CommandMetadataRegistry {
         self.commands.push(command.to_owned());
         self
     }
+
+    pub fn get_mut<K>(&mut self, key:K) -> Option<&mut CommandMetadata>
+    where K:Into<CommandKey>
+    {
+        let key:CommandKey = key.into();
+        for command in &mut self.commands {
+            if command.realm == key.realm && command.namespace == key.namespace && command.name == key.name {
+                return Some(command);
+            }
+        }
+        None
+    }
+
+    pub fn get<K>(&self, key:K) -> Option<&CommandMetadata>
+    where K:Into<CommandKey>
+    {
+        let key = key.into();
+        for command in &self.commands {
+            if command.realm == key.realm && command.namespace == key.namespace && command.name == key.name {
+                return Some(command);
+            }
+        }
+        None
+    }
+
     pub fn find_command(
         &self,
         realm: &str,

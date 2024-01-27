@@ -1,8 +1,10 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::result;
 
-use crate::command_metadata::{CommandKey, CommandMetadata};
+use crate::command_metadata::{self, CommandKey, CommandMetadata, CommandMetadataRegistry};
 use crate::error::{Error, ErrorType};
 use crate::plan::{Parameter, ResolvedParameters};
 use crate::query::Position;
@@ -223,6 +225,77 @@ impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn
         }
     }
 }
+pub struct CommandRegistry<I, V: ValueInterface> {
+    executors: HashMap<CommandKey, Box<dyn Command<I, V>>>,
+    pub command_metadata_registry: CommandMetadataRegistry,
+}
+
+impl<I, V: ValueInterface> CommandRegistry<I, V> {
+    pub fn new() -> Self {
+        CommandRegistry {
+            executors: HashMap::new(),
+            command_metadata_registry: CommandMetadataRegistry::new(),
+        }
+    }
+    pub fn register_boxed_command<K>(
+        &mut self,
+        key: K,
+        executor: Box<dyn Command<I, V>>,
+    ) -> Result<&mut CommandMetadata, Error>
+    where
+        K: Into<CommandKey>,
+    {
+        let key = key.into();
+        let mut command_metadata = executor
+            .command_metadata()
+            .map(|cm| {
+                let mut cm = cm.clone();
+                cm.with_realm(&key.realm)
+                    .with_namespace(&key.namespace)
+                    .with_name(&key.name);
+                cm
+            })
+            .unwrap_or((&key).into());
+        self.command_metadata_registry
+            .add_command(&command_metadata);
+
+        self.executors.insert(key.clone(), executor);
+        Ok(self.command_metadata_registry.get_mut(key).unwrap())
+    }
+    pub fn register_command<K, T>(&mut self, key: K, f: T) -> Result<&mut CommandMetadata, Error>
+    where
+        K: Into<CommandKey>,
+        T: Command<I, V> + 'static,
+    {
+        let key = key.into();
+        let command: Box<dyn Command<I, V>> = Box::new(f);
+        self.register_boxed_command(key, command)
+    }
+}
+
+impl<I, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
+    fn execute(
+        &mut self,
+        realm: &str,
+        namespace: &str,
+        command_name: &str,
+        state: &State<V>,
+        arguments: &mut CommandArguments<I>,
+    ) -> Result<V, Error> {
+        let key = CommandKey::new(realm, namespace, command_name);
+        if let Some(command) = self.executors.get_mut(&key) {
+            command.execute(state, arguments)
+        } else {
+            Err(Error::unknown_command_executor(
+                realm,
+                namespace,
+                command_name,
+                &arguments.action_position,
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,4 +379,22 @@ mod tests {
         assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())
     }
+    #[test]
+    fn test_command_registry() -> Result<(), Error> {
+        let mut cr = CommandRegistry::<NoInjection, Value>::new();
+        cr.register_command("test", || -> String { "Hello1".into() })?;
+        cr.register_command("test2", || -> String { "Hello2".into() })?;
+        cr.register_command("stest1", Command1::from(|s:&State<Value>| -> String { "STest1".into() }))?;
+        println!("{:?}", cr.command_metadata_registry);
+
+        let state = State::new();
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let s = cr.execute("", "", "test", &state, &mut ca).unwrap();
+        assert_eq!(s.try_into_string()?, "Hello1");
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let s = cr.execute("", "", "test2", &state, &mut ca).unwrap();
+        assert_eq!(s.try_into_string()?, "Hello2");
+        Ok(())
+    }
+
 }
