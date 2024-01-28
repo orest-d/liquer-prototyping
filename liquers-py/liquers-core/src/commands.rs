@@ -107,6 +107,7 @@ where
     }
 }
 
+
 impl<F, Injection, V, R> Command<Injection, V> for Command1<&State<V>, R, F>
 where
     F: FnMut(&State<V>) -> R,
@@ -126,6 +127,17 @@ where
                     .with_position(&arguments.action_position),
             )
         }
+    }
+}
+
+impl<F, Injection, V, R> From<F> for Box<dyn Command<Injection, V>>
+where
+R: 'static,
+F: FnMut(&State<V>) -> R + 'static,
+V: ValueInterface + From<R> + 'static,
+{
+    fn from(f: F) -> Self {
+        Box::new(Command1::from(f))
     }
 }
 
