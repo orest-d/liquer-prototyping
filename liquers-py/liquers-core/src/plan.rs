@@ -119,6 +119,7 @@ impl<'c> PlanBuilder<'c> {
 
     pub fn build(&mut self) -> Result<Plan, Error> {
         let query = self.query.clone();
+        self.plan.query = query.clone();
         self.process_query(&query)?;
         Ok(self.plan.clone())
     }
@@ -151,13 +152,19 @@ impl<'c> PlanBuilder<'c> {
     ) -> Result<CommandMetadata, Error> {
         let namespaces = self.get_namespaces(query)?;
         let realm = query.last_transform_query_name().unwrap_or("".to_string());
+        println!("action:     {}",action_request.encode());
+        println!("namespaces: {:?}",&namespaces);
+        println!("realm:      {}",&realm);
+
         if let Some(command_metadata) = self.command_registry.find_command_in_namespaces(
             &realm,
             &namespaces,
             &action_request.name,
         ) {
+            println!("Command found");
             Ok(command_metadata.clone())
         } else {
+            println!("Command not found");
             Err(Error::action_not_registered(action_request, &namespaces))
         }
     }
@@ -185,30 +192,38 @@ impl<'c> PlanBuilder<'c> {
     }
 
     fn process_query(&mut self, query: &Query) -> Result<(), Error> {
+        println!("process query {}",query);
         if query.is_empty() || query.is_ns() {
+            println!("empty or ns");
             return Ok(());
         }
         if let Some(rq) = query.resource_query() {
+            println!("RESOURCE {}",rq);
             self.process_resource_query(&rq)?;
             return Ok(());
         }
         if let Some(transform) = query.transform_query() {
+            println!("TRANSFORM {}",&transform);
             if let Some(action) = transform.action() {
+                println!("ACTION {}",&action);
                 let mut query = query.clone();
                 query.segments = Vec::new();
                 self.process_action(&query, &action)?;
                 return Ok(());
             }
             if transform.is_filename() {
+                println!("FILENAME {}",&transform);
                 self.plan
                     .steps
                     .push(Step::Filename(transform.filename.unwrap().clone()));
                 return Ok(());
             }
-            return Ok(());
+            println!("Longer transform query");
         }
 
         let (p, q) = query.predecessor();
+        println!("PREDECESOR: {:?}",&p);
+        println!("REMAINDER:  {:?}",&q);
 
         if let Some(p) = p.as_ref() {
             if !p.is_empty() {
@@ -295,7 +310,7 @@ impl<'c> PlanBuilder<'c> {
             self.pop_action_parameter(arginfo, action_request)?,
         ) {
             (_, (None, is_default)) => Ok(Value::Null),
-            (ArgumentType::String, (Some(x), is_default)) => Ok(Value::String(x.to_string())),
+            (ArgumentType::String, (Some(x), is_default)) => Ok(x),
             (ArgumentType::Integer, (Some(x), is_default)) => Ok(x),
             (ArgumentType::IntegerOption, (Some(x), is_default)) => Ok(x),
             (ArgumentType::Float, (Some(x), is_default)) => Ok(x),

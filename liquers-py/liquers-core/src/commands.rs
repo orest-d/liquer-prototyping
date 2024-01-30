@@ -32,6 +32,9 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
     pub fn has_no_parameters(&self) -> bool {
         self.parameters.parameters.is_empty()
     }
+    pub fn len(&self) -> usize {
+        self.parameters.parameters.len()
+    }
     pub fn get<T: FromParameter<T, Injection>>(&mut self) -> Result<T, Error> {
         if let Some(p) = self.parameters.parameters.get(self.argument_number) {
             self.argument_number += 1;
@@ -63,6 +66,7 @@ pub trait Command<Injection, V: ValueInterface> {
     }
 }
 
+/*
 impl<F, R, Injection, V> Command<Injection, V> for F
 where
     F: FnMut() -> R,
@@ -78,12 +82,66 @@ where
             Ok(V::from(result))
         } else {
             Err(
-                Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters ({}); none expected", arguments.len()))
                     .with_position(&arguments.action_position),
             )
         }
     }
 }
+*/
+
+pub struct Command0<R, F>
+where
+    F: FnMut() -> R,
+{
+    f: F,
+    result: PhantomData<R>,
+}
+
+impl<R, F> From<F> for Command0<R, F>
+where
+    F: FnMut() -> R,
+{
+    fn from(f: F) -> Self {
+        Command0 {
+            f,
+            result: Default::default(),
+        }
+    }
+}
+
+impl<F, Injection, V, R> Command<Injection, V> for Command0<R, F>
+where
+    F: FnMut() -> R,
+    V: ValueInterface + From<R>,
+{
+    fn execute(
+        &mut self,
+        state: &State<V>,
+        arguments: &mut CommandArguments<'_, Injection>,
+    ) -> Result<V, Error> {
+        if arguments.has_no_parameters() {
+            let result = (self.f)();
+            Ok(V::from(result))
+        } else {
+            Err(
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters ({}) - none expected", arguments.len()))
+                    .with_position(&arguments.action_position),
+            )
+        }
+    }
+}
+/*
+impl<F: FnMut() -> R + 'static, Injection, V, R> From<F> for Box<dyn Command<Injection, V>>
+where
+R: 'static,
+V: ValueInterface + From<R> + 'static,
+{
+    fn from(f: F) -> Self {
+        Box::new(Command0::from(f))
+    }
+}
+*/
 
 pub struct Command1<S, R, F>
 where
@@ -123,24 +181,23 @@ where
             Ok(V::from(result))
         } else {
             Err(
-                Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters ({}) - only state expected", arguments.len()))
                     .with_position(&arguments.action_position),
             )
         }
     }
 }
-
-impl<F, Injection, V, R> From<F> for Box<dyn Command<Injection, V>>
+/*
+impl<F: FnMut(&State<V>) -> R + 'static, Injection, V, R> From<F> for Box<dyn Command<Injection, V>>
 where
 R: 'static,
-F: FnMut(&State<V>) -> R + 'static,
 V: ValueInterface + From<R> + 'static,
 {
     fn from(f: F) -> Self {
         Box::new(Command1::from(f))
     }
 }
-
+*/
 pub struct Command2<S, T, R, F>
 where
     F: FnMut(S, T) -> R,
@@ -176,13 +233,13 @@ where
         state: &State<V>,
         arguments: &mut CommandArguments<'_, Injection>,
     ) -> Result<V, Error> {
-        if arguments.has_no_parameters() {
+        if arguments.len()==1 {
             let argument: T = arguments.get()?;
             let result = (self.f)(state, argument);
             Ok(V::from(result))
         } else {
             Err(
-                Error::new(ErrorType::TooManyParameters, format!("Too many parameters"))
+                Error::new(ErrorType::TooManyParameters, format!("Too many parameters ({}), 1 expected", arguments.len()))
                     .with_position(&arguments.action_position),
             )
         }
@@ -203,6 +260,18 @@ impl<I> FromParameter<String, I> for String {
         }
     }
 }
+/*
+impl<I> FromParameter<&str, I> for &str {
+    fn from_parameter(param: &Parameter, _injection: &I) -> Result<&str, Error> {
+        if let Some(p) = param.value.as_str() {
+            Ok(p)
+        } else {
+            //TODO: Use position from parameter
+            Err(Error::conversion_error(param.value.clone(), "string (&str)"))
+        }
+    }
+}
+*/
 
 pub trait CommandExecutor<Injection, V: ValueInterface> {
     fn execute(
@@ -283,6 +352,17 @@ impl<I, V: ValueInterface> CommandRegistry<I, V> {
         let command: Box<dyn Command<I, V>> = Box::new(f);
         self.register_boxed_command(key, command)
     }
+    /*
+    pub fn register<K, T>(&mut self, key: K, f: T) -> Result<&mut CommandMetadata, Error>
+    where
+        K: Into<CommandKey>,
+        T: Into<Box<dyn Command<I, V>>> + 'static,
+    {
+        let key = key.into();
+        let command: Box<dyn Command<I, V>> = f.into();
+        self.register_boxed_command(key, command)
+    }
+    */
 }
 
 impl<I, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
@@ -327,7 +407,7 @@ mod tests {
             assert_eq!(namespace, "");
             assert_eq!(command_name, "test");
             assert!(state.data.is_none());
-            (|| -> String { "Hello".into() }).execute(state, arguments)
+            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments)
         }
     }
     #[test]
@@ -352,7 +432,7 @@ mod tests {
     }
     #[test]
     fn test_execute_command() -> Result<(), Error> {
-        let mut c = || -> String { "Hello".into() };
+        let mut c = Command0::from(|| -> String { "Hello".into() });
         let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
         let state: State<Value> = State::new();
         let s: Value = c.execute(&state, &mut ca).unwrap();
@@ -375,11 +455,11 @@ mod tests {
         let mut hm = HashMap::<CommandKey, Box<dyn Command<NoInjection, Value>>>::new();
         hm.insert(
             CommandKey::new("", "", "test"),
-            Box::new(|| -> String { "Hello1".into() }),
+            Box::new(Command0::from(|| -> String { "Hello1".into() })),
         );
         hm.insert(
             CommandKey::new("", "", "test2"),
-            Box::new(|| -> String { "Hello2".into() }),
+            Box::new(Command0::from(|| -> String { "Hello2".into() })),
         );
 
         let state = State::new();
@@ -394,8 +474,8 @@ mod tests {
     #[test]
     fn test_command_registry() -> Result<(), Error> {
         let mut cr = CommandRegistry::<NoInjection, Value>::new();
-        cr.register_command("test", || -> String { "Hello1".into() })?;
-        cr.register_command("test2", || -> String { "Hello2".into() })?;
+        cr.register_command("test", Command0::from(|| -> String { "Hello1".into() }))?;
+        cr.register_command("test2", Command0::from(|| -> String { "Hello2".into() }))?;
         cr.register_command("stest1", Command1::from(|s:&State<Value>| -> String { "STest1".into() }))?;
         println!("{:?}", cr.command_metadata_registry);
 

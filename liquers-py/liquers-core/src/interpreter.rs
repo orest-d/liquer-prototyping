@@ -34,6 +34,7 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
         }
     }
     pub fn with_plan(&mut self, plan: Plan) -> &mut Self {
+        println!("with plan {:?}", plan);
         self.plan = Some(plan);
         self.step_number = 0;
         self.metadata.replace(MetadataRecord::new());
@@ -42,6 +43,7 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
 
     pub fn with_query(&mut self, query: &str) -> Result<&mut Self, Error> {
         let query = parse_query(query)?;
+        println!("Query: {}",query);
         let mut pb = PlanBuilder::new(query, &self.command_metadata_registry);
         let plan = pb.build()?;
         Ok(self.with_plan(plan))
@@ -75,7 +77,8 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
                         )?;
                         let state = State::new()
                             .with_data(result)
-                            .with_metadata(self.metadata.take().unwrap().into());
+                            .with_metadata(self.metadata.take().unwrap_or(MetadataRecord::new()).into());
+                        //TODO: Make sure metadata is correctly filled - now empty metadata is created.
                         self.state.replace(state);
                     }
                     crate::plan::Step::Filename(name) => {
@@ -130,7 +133,7 @@ mod tests {
             assert_eq!(realm, "");
             assert_eq!(namespace, "root");
             assert_eq!(command_name, "test");
-            (|| -> String { "Hello".into() }).execute(state, arguments)
+            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments)
         }
     }
     #[test]
@@ -148,24 +151,25 @@ mod tests {
     #[test]
     fn test_hello_world_interpreter() -> Result<(), Error> {
         let mut cr:CommandRegistry<NoInjection, Value>  = CommandRegistry::new();
-        /*
-        cr.register("hello", || { "Hello".to_string()})?;
-        cr.register("greet", |state:State<Value>, who:&str| -> String {
+        
+        cr.register_command("hello", Command0::from(|| { "Hello".to_string()}))?;
+        cr.register_command("greet", Command2::from(|state:&State<Value>, who:String| -> String {
             let greeting = state.data.try_into_string().unwrap();
             format!("{} {}!", greeting, who)
-        })?
+        }))?
         .with_state_argument(ArgumentInfo::string_argument("greeting"))
         .with_argument(ArgumentInfo::string_argument("who"));
-    */
+    
         let cmr = cr.command_metadata_registry.clone();
 
         let mut pi = PlanInterpreter::new(cmr, NoInjection, cr);
-        pi.with_query("hello/greeting-world").unwrap();
+        pi.with_query("hello/greet-world").unwrap();
         //println!("{:?}", pi.plan);
+        println!("{}",serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap());
         pi.step()?;
         assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello");
         pi.step()?;
-        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello, world!");
+        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello world!");
         Ok(())
     }
 }
