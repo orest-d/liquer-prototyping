@@ -105,6 +105,7 @@ pub struct PlanBuilder<'c> {
     plan: Plan,
 }
 
+// TODO: support cache and volatile flags
 impl<'c> PlanBuilder<'c> {
     pub fn new(query: Query, command_registry: &'c CommandMetadataRegistry) -> Self {
         PlanBuilder {
@@ -141,6 +142,7 @@ impl<'c> PlanBuilder<'c> {
         // TODO: get default namespaces from command registry
         namespaces.push("".to_string());
         namespaces.push("root".to_string());
+        
         // TODO: check if the namespaces are registered in command registry
         Ok(namespaces)
     }

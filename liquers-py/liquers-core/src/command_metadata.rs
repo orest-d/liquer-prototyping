@@ -404,7 +404,6 @@ impl From<&str> for CommandKey {
 
 // TODO: support input type
 // TODO: support output type
-// TODO: support cache and volatile flags
 /// CommandMetadata describes a command.
 /// It does not specify how to execute the command though, this is the role of a CommandExecutor.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -416,6 +415,8 @@ pub struct CommandMetadata {
     pub doc: String,
     pub state_argument: ArgumentInfo,
     pub arguments: Vec<ArgumentInfo>,
+    pub cache:bool,
+    pub volatile:bool,
 }
 
 impl CommandMetadata {
@@ -428,6 +429,8 @@ impl CommandMetadata {
             doc: "".to_string(),
             state_argument: ArgumentInfo::any_argument("state"),
             arguments: Vec::new(),
+            cache:true,
+            volatile:false,
         }
     }
     pub fn check(&self) -> Vec<CommandRegistryIssue> {
@@ -554,4 +557,5 @@ impl CommandMetadataRegistry {
         }
         None
     }
+    
 }

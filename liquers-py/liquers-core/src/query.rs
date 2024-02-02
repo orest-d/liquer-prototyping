@@ -1253,7 +1253,7 @@ impl Query {
         let mut result = vec![];
         let mut qp = Some(self);
         let mut qr: Option<QuerySegment> = None;
-        let mut buff: Option<Query> = None;
+        let mut buff: Option<Query>;
         while qp.is_some() {
             /*
             println!(
