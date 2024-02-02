@@ -121,6 +121,13 @@ mod tests {
     use crate::commands::*;
     use crate::value::Value;
     struct TestExecutor;
+
+    #[derive(Clone)]
+    struct InjectedVariable(String);
+    struct InjectionTest{
+        variable: InjectedVariable
+    }
+
     impl CommandExecutor<NoInjection, Value> for TestExecutor {
         fn execute(
             &mut self,
@@ -172,4 +179,30 @@ mod tests {
         assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello world!");
         Ok(())
     }
+
+    /* 
+    #[test]
+    fn test_interpreter_with_value_injection() -> Result<(), Error> {
+        let mut cr:CommandRegistry<InjectionTest, Value>  = CommandRegistry::new();
+        impl FromParameter<InjectedVariable> for InjectedVariable {
+            fn from_parameter(param: &crate::plan::Parameter, injection: &InjectionTest) -> Result<InjectedVariable, Error> {
+                Ok(injection.variable.clone())
+            }
+        }
+
+        assert_eq!(InjectedVariable::is_injected(), true);
+        
+        cr.register_command("injected", Command2::from(|state:&State<Value>, what:InjectedVariable| { format!("Hello {}", what.0)}))?
+        .with_state_argument(ArgumentInfo::string_argument("nothing"));
+    
+        let cmr = cr.command_metadata_registry.clone();
+
+        let mut pi = PlanInterpreter::new(cmr, InjectionTest{variable:InjectedVariable("injected string".to_string())}, cr);
+        pi.with_query("injected")?;
+        println!("{}",serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap());
+        pi.step()?;
+        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello injected string");
+        Ok(())
+    }
+    */
 }

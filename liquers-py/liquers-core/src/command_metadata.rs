@@ -405,7 +405,19 @@ impl From<&str> for CommandKey {
 // TODO: support input type
 // TODO: support output type
 /// CommandMetadata describes a command.
+/// It contains documentation and information about the command arguments,
+/// which is used to fill default values and type-check/validate the arguments
+/// during the [Plan] building phase.
 /// It does not specify how to execute the command though, this is the role of a CommandExecutor.
+/// 
+/// # Example
+/// ```
+/// use liquers_core::command_metadata::*;
+/// 
+/// let mut command = CommandMetadata::new("test");
+/// command.with_doc("This is a test command")
+///    .with_argument(ArgumentInfo::string_argument("arg1"));
+/// ```
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct CommandMetadata {
     pub realm: String,

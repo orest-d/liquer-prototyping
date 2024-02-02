@@ -35,10 +35,10 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
     pub fn len(&self) -> usize {
         self.parameters.parameters.len()
     }
-    pub fn get<T: FromParameter<T, Injection>>(&mut self) -> Result<T, Error> {
+    pub fn get_parameter(&mut self)->Result<&Parameter,Error>{
         if let Some(p) = self.parameters.parameters.get(self.argument_number) {
             self.argument_number += 1;
-            T::from_parameter(p, self.injection)
+            Ok(p)
         } else {
             Err(Error::missing_argument(
                 self.argument_number,
@@ -46,6 +46,9 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
                 &self.action_position,
             ))
         }
+    }
+    pub fn get<T: FromCommandArguments<'i, T, Injection>>(&mut self) -> Result<T, Error> {
+        T::from_arguments(self, self.injection)
     }
 }
 
@@ -230,14 +233,15 @@ impl<F, Injection, V, T, R> Command<Injection, V> for Command2<&State<V>, T, R, 
 where
     F: Fn(&State<V>, T) -> R,
     V: ValueInterface + From<R>,
-    T: FromParameter<T, Injection>,
+    T: FromParameter<T>,
 {
     fn execute(
         &self,
         state: &State<V>,
         arguments: &mut CommandArguments<'_, Injection>,
     ) -> Result<V, Error> {
-        if arguments.len() == 1 {
+        //TODO: check number of injected parameters ?
+        if arguments.len() <= 1 {
             let argument: T = arguments.get()?;
             let result = (self.f)(state, argument);
             Ok(V::from(result))
@@ -251,12 +255,12 @@ where
     }
 }
 
-pub trait FromParameter<T, Injection> {
-    fn from_parameter(param: &Parameter, injection: &Injection) -> Result<T, Error>;
+pub trait FromParameter<T> {
+    fn from_parameter(param: &Parameter) -> Result<T, Error>;
 }
 
-impl<I> FromParameter<String, I> for String {
-    fn from_parameter(param: &Parameter, _injection: &I) -> Result<String, Error> {
+impl FromParameter<String> for String {
+    fn from_parameter(param: &Parameter) -> Result<String, Error> {
         if let Some(p) = param.value.as_str() {
             Ok(p.to_owned())
         } else {
@@ -266,6 +270,23 @@ impl<I> FromParameter<String, I> for String {
                 &param.position,
             ))
         }
+    }
+}
+
+pub trait FromCommandArguments<'i, T, Injection> {
+    fn from_arguments(args: &mut CommandArguments<'i, Injection>, injection: &Injection) -> Result<T, Error>;
+    fn is_injected() -> bool;
+}
+
+impl<I, T> FromCommandArguments<'_, T, I> for T
+where
+    T: FromParameter<T>,
+{
+    fn from_arguments(args: &mut CommandArguments<'_, I>, injection: &I) -> Result<T, Error> {
+        T::from_parameter(args.get_parameter()?)
+    }
+    fn is_injected() -> bool {
+        false
     }
 }
 
@@ -412,7 +433,7 @@ mod tests {
             value: "Hello".into(),
             ..Parameter::default()
         };
-        let s: String = String::from_parameter(&p, &NoInjection).unwrap();
+        let s: String = String::from_parameter(&p).unwrap();
         assert_eq!(s, "Hello");
     }
     #[test]
