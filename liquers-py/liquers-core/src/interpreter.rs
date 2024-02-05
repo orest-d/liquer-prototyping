@@ -17,7 +17,7 @@ pub struct PlanInterpreter<I, V: ValueInterface, CE: CommandExecutor<I, V>> {
     step_number: usize,
     metadata: Option<MetadataRecord>,
     state: Option<State<V>>,
-    phantom_value: std::marker::PhantomData<V>,
+    phantom_value: std::marker::PhantomData<V>
 }
 
 impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> {
@@ -180,19 +180,21 @@ mod tests {
         Ok(())
     }
 
-    /* 
+     
     #[test]
     fn test_interpreter_with_value_injection() -> Result<(), Error> {
         let mut cr:CommandRegistry<InjectionTest, Value>  = CommandRegistry::new();
-        impl FromParameter<InjectedVariable> for InjectedVariable {
-            fn from_parameter(param: &crate::plan::Parameter, injection: &InjectionTest) -> Result<InjectedVariable, Error> {
-                Ok(injection.variable.clone())
+        impl FromCommandArguments<InjectedVariable, InjectionTest> for InjectedVariable {
+            fn from_arguments(args: &mut CommandArguments<'_, InjectionTest>) -> Result<InjectedVariable, Error> {
+                Ok(args.injection.variable.to_owned())
+            }
+
+            fn is_injected() -> bool {
+                true
             }
         }
-
-        assert_eq!(InjectedVariable::is_injected(), true);
         
-        cr.register_command("injected", Command2::from(|state:&State<Value>, what:InjectedVariable| { format!("Hello {}", what.0)}))?
+        cr.register_command("injected", Command2::from(|_state:&State<Value>, what:InjectedVariable| { format!("Hello {}", what.0)}))?
         .with_state_argument(ArgumentInfo::string_argument("nothing"));
     
         let cmr = cr.command_metadata_registry.clone();
@@ -204,5 +206,5 @@ mod tests {
         assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello injected string");
         Ok(())
     }
-    */
+    
 }

@@ -47,8 +47,8 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
             ))
         }
     }
-    pub fn get<T: FromCommandArguments<'i, T, Injection>>(&mut self) -> Result<T, Error> {
-        T::from_arguments(self, self.injection)
+    pub fn get<T: FromCommandArguments<T, Injection>>(&mut self) -> Result<T, Error> {
+        T::from_arguments(self)
     }
 }
 
@@ -56,10 +56,10 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
 /// This trait encapsulates a command that can be executed,
 /// typically a function
 pub trait Command<Injection, V: ValueInterface> {
-    fn execute(
+    fn execute<'i>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<Injection>,
+        arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error>;
 
     /// Returns the default metadata of the command
@@ -118,10 +118,10 @@ where
     F: Fn() -> R,
     V: ValueInterface + From<R>,
 {
-    fn execute(
+    fn execute<'i>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'_, Injection>,
+        arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
         if arguments.has_no_parameters() {
             let result = (self.f)();
@@ -174,10 +174,10 @@ where
     F: Fn(&State<V>) -> R,
     V: ValueInterface + From<R>,
 {
-    fn execute(
+    fn execute<'i>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'_, Injection>,
+        arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
         if arguments.has_no_parameters() {
             let result = (self.f)(state);
@@ -233,12 +233,12 @@ impl<F, Injection, V, T, R> Command<Injection, V> for Command2<&State<V>, T, R, 
 where
     F: Fn(&State<V>, T) -> R,
     V: ValueInterface + From<R>,
-    T: FromParameter<T>,
+    T: FromCommandArguments<T, Injection>,
 {
-    fn execute(
+    fn execute<'i>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'_, Injection>,
+        arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
         //TODO: check number of injected parameters ?
         if arguments.len() <= 1 {
@@ -273,16 +273,16 @@ impl FromParameter<String> for String {
     }
 }
 
-pub trait FromCommandArguments<'i, T, Injection> {
-    fn from_arguments(args: &mut CommandArguments<'i, Injection>, injection: &Injection) -> Result<T, Error>;
+pub trait FromCommandArguments<T, Injection> {
+    fn from_arguments<'i>(args: &mut CommandArguments<'i, Injection>) -> Result<T, Error>;
     fn is_injected() -> bool;
 }
 
-impl<I, T> FromCommandArguments<'_, T, I> for T
+impl<I, T> FromCommandArguments<T, I> for T
 where
     T: FromParameter<T>,
 {
-    fn from_arguments(args: &mut CommandArguments<'_, I>, injection: &I) -> Result<T, Error> {
+    fn from_arguments<'i>(args: &mut CommandArguments<'i, I>) -> Result<T, Error> {
         T::from_parameter(args.get_parameter()?)
     }
     fn is_injected() -> bool {
@@ -290,25 +290,26 @@ where
     }
 }
 
+
 pub trait CommandExecutor<Injection, V: ValueInterface> {
-    fn execute(
+    fn execute<'i>(
         &mut self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<'_, Injection>,
+        arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error>;
 }
 
 impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn Command<I, V>>> {
-    fn execute(
+    fn execute<'i>(
         &mut self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<I>,
+        arguments: &mut CommandArguments<'i, I>,
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.get_mut(&key) {
@@ -383,13 +384,13 @@ impl<I, V: ValueInterface> CommandRegistry<I, V> {
 }
 
 impl<I, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
-    fn execute(
+    fn execute<'i>(
         &mut self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<I>,
+        arguments: &mut CommandArguments<'i, I>,
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.executors.get_mut(&key) {
