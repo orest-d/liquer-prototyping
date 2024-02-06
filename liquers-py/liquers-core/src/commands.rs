@@ -15,13 +15,13 @@ pub struct NoInjection;
 
 pub struct CommandArguments<'i, Injection> {
     pub parameters: ResolvedParameters,
-    pub injection: &'i Injection,
+    pub injection: &'i mut Injection,
     pub action_position: Position,
     pub argument_number: usize,
 }
 
 impl<'i, Injection> CommandArguments<'i, Injection> {
-    pub fn new(parameters: ResolvedParameters, injection: &'i Injection) -> Self {
+    pub fn new(parameters: ResolvedParameters, injection: &'i mut Injection) -> Self {
         CommandArguments {
             parameters,
             injection,
@@ -444,14 +444,16 @@ mod tests {
             value: "Hello".into(),
             ..Parameter::default()
         });
-        let mut ca = CommandArguments::new(rp, &NoInjection);
+        let mut injection= NoInjection;
+        let mut ca = CommandArguments::new(rp, &mut injection);
         let s: String = ca.get().unwrap();
         assert_eq!(s, "Hello");
     }
     #[test]
     fn test_execute_command() -> Result<(), Error> {
         let c = Command0::from(|| -> String { "Hello".into() });
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let mut injection = NoInjection;
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let state: State<Value> = State::new();
         let s: Value = c.execute(&state, &mut ca).unwrap();
         assert_eq!(s.try_into_string()?, "Hello");
@@ -460,7 +462,8 @@ mod tests {
 
     #[test]
     fn test_command_executor() -> Result<(), Error> {
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let mut injection = NoInjection;
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let state = State::new();
         let s = TestExecutor
             .execute("", "", "test", &state, &mut ca)
@@ -481,10 +484,11 @@ mod tests {
         );
 
         let state = State::new();
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let mut injection = NoInjection;
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let s = hm.execute("", "", "test", &state, &mut ca).unwrap();
         assert_eq!(s.try_into_string()?, "Hello1");
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let s = hm.execute("", "", "test2", &state, &mut ca).unwrap();
         assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())
@@ -501,10 +505,12 @@ mod tests {
         println!("{:?}", cr.command_metadata_registry);
 
         let state = State::new();
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+
+        let mut injection = NoInjection;
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let s = cr.execute("", "", "test", &state, &mut ca).unwrap();
         assert_eq!(s.try_into_string()?, "Hello1");
-        let mut ca = CommandArguments::new(ResolvedParameters::new(), &NoInjection);
+        let mut ca = CommandArguments::new(ResolvedParameters::new(), &mut injection);
         let s = cr.execute("", "", "test2", &state, &mut ca).unwrap();
         assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())

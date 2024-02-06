@@ -17,7 +17,7 @@ pub struct PlanInterpreter<I, V: ValueInterface, CE: CommandExecutor<I, V>> {
     step_number: usize,
     metadata: Option<MetadataRecord>,
     state: Option<State<V>>,
-    phantom_value: std::marker::PhantomData<V>
+    phantom_value: std::marker::PhantomData<V>,
 }
 
 impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> {
@@ -43,7 +43,7 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
 
     pub fn with_query(&mut self, query: &str) -> Result<&mut Self, Error> {
         let query = parse_query(query)?;
-        println!("Query: {}",query);
+        println!("Query: {}", query);
         let mut pb = PlanBuilder::new(query, &self.command_metadata_registry);
         let plan = pb.build()?;
         Ok(self.with_plan(plan))
@@ -65,7 +65,7 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
                         parameters,
                     } => {
                         let mut arguments =
-                            CommandArguments::new(parameters.clone(), &self.injection);
+                            CommandArguments::new(parameters.clone(), &mut self.injection);
                         arguments.action_position = position.clone();
                         let input_state = self.state.take().unwrap_or(State::new());
                         let result = self.command_executor.execute(
@@ -75,9 +75,9 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
                             &input_state,
                             &mut arguments,
                         )?;
-                        let state = State::new()
-                            .with_data(result)
-                            .with_metadata(self.metadata.take().unwrap_or(MetadataRecord::new()).into());
+                        let state = State::new().with_data(result).with_metadata(
+                            self.metadata.take().unwrap_or(MetadataRecord::new()).into(),
+                        );
                         //TODO: Make sure metadata is correctly filled - now empty metadata is created.
                         self.state.replace(state);
                     }
@@ -111,7 +111,10 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::rc::Rc;
 
     use super::*;
     use crate::command_metadata::ArgumentInfo;
@@ -124,8 +127,12 @@ mod tests {
 
     #[derive(Clone)]
     struct InjectedVariable(String);
-    struct InjectionTest{
-        variable: InjectedVariable
+    struct InjectionTest {
+        variable: InjectedVariable,
+    }
+
+    struct MutableInjectionTest {
+        variable: Rc<RefCell<InjectedVariable>>,
     }
 
     impl CommandExecutor<NoInjection, Value> for TestExecutor {
@@ -157,35 +164,45 @@ mod tests {
     }
     #[test]
     fn test_hello_world_interpreter() -> Result<(), Error> {
-        let mut cr:CommandRegistry<NoInjection, Value>  = CommandRegistry::new();
-        
-        cr.register_command("hello", Command0::from(|| { "Hello".to_string()}))?;
-        cr.register_command("greet", Command2::from(|state:&State<Value>, who:String| -> String {
-            let greeting = state.data.try_into_string().unwrap();
-            format!("{} {}!", greeting, who)
-        }))?
+        let mut cr: CommandRegistry<NoInjection, Value> = CommandRegistry::new();
+
+        cr.register_command("hello", Command0::from(|| "Hello".to_string()))?;
+        cr.register_command(
+            "greet",
+            Command2::from(|state: &State<Value>, who: String| -> String {
+                let greeting = state.data.try_into_string().unwrap();
+                format!("{} {}!", greeting, who)
+            }),
+        )?
         .with_state_argument(ArgumentInfo::string_argument("greeting"))
         .with_argument(ArgumentInfo::string_argument("who"));
-    
+
         let cmr = cr.command_metadata_registry.clone();
 
         let mut pi = PlanInterpreter::new(cmr, NoInjection, cr);
         pi.with_query("hello/greet-world").unwrap();
         //println!("{:?}", pi.plan);
-        println!("{}",serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap());
+        println!(
+            "{}",
+            serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
+        );
         pi.step()?;
         assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello");
         pi.step()?;
-        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello world!");
+        assert_eq!(
+            pi.state.as_ref().unwrap().data.try_into_string()?,
+            "Hello world!"
+        );
         Ok(())
     }
 
-     
     #[test]
     fn test_interpreter_with_value_injection() -> Result<(), Error> {
-        let mut cr:CommandRegistry<InjectionTest, Value>  = CommandRegistry::new();
+        let mut cr: CommandRegistry<InjectionTest, Value> = CommandRegistry::new();
         impl FromCommandArguments<InjectedVariable, InjectionTest> for InjectedVariable {
-            fn from_arguments(args: &mut CommandArguments<'_, InjectionTest>) -> Result<InjectedVariable, Error> {
+            fn from_arguments(
+                args: &mut CommandArguments<'_, InjectionTest>,
+            ) -> Result<InjectedVariable, Error> {
                 Ok(args.injection.variable.to_owned())
             }
 
@@ -193,18 +210,83 @@ mod tests {
                 true
             }
         }
-        
-        cr.register_command("injected", Command2::from(|_state:&State<Value>, what:InjectedVariable| { format!("Hello {}", what.0)}))?
+
+        cr.register_command(
+            "injected",
+            Command2::from(|_state: &State<Value>, what: InjectedVariable| {
+                format!("Hello {}", what.0)
+            }),
+        )?
         .with_state_argument(ArgumentInfo::string_argument("nothing"));
-    
+
         let cmr = cr.command_metadata_registry.clone();
 
-        let mut pi = PlanInterpreter::new(cmr, InjectionTest{variable:InjectedVariable("injected string".to_string())}, cr);
+        let mut pi = PlanInterpreter::new(
+            cmr,
+            InjectionTest {
+                variable: InjectedVariable("injected string".to_string()),
+            },
+            cr,
+        );
         pi.with_query("injected")?;
-        println!("{}",serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap());
+        println!(
+            "{}",
+            serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
+        );
         pi.step()?;
-        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello injected string");
+        assert_eq!(
+            pi.state.as_ref().unwrap().data.try_into_string()?,
+            "Hello injected string"
+        );
         Ok(())
     }
-    
+    #[test]
+    fn test_interpreter_with_mutable_injection() -> Result<(), Error> {
+        let mut cr: CommandRegistry<MutableInjectionTest, Value> = CommandRegistry::new();
+        impl<'v> FromCommandArguments<Rc<RefCell<InjectedVariable>>, MutableInjectionTest>
+            for Rc<RefCell<InjectedVariable>>
+        {
+            fn from_arguments<'i>(
+                args: &mut CommandArguments<'i, MutableInjectionTest>,
+            ) -> Result<Rc<RefCell<InjectedVariable>>, Error> {
+                Ok(args.injection.variable.clone())
+            }
+
+            fn is_injected() -> bool {
+                true
+            }
+        }
+
+        cr.register_command(
+            "injected",
+            Command2::from(
+                |_state: &State<Value>, what: Rc<RefCell<InjectedVariable>>| {
+                    let res = format!("Hello {}", what.borrow().0);
+                    what.borrow_mut().0 = "changed".to_owned();
+                    res
+                },
+            ),
+        )?
+        .with_state_argument(ArgumentInfo::string_argument("nothing"));
+
+        let cmr = cr.command_metadata_registry.clone();
+        let injection = MutableInjectionTest {
+            variable: Rc::new(RefCell::new(InjectedVariable(
+                "injected string".to_string(),
+            ))),
+        };
+        let mut pi = PlanInterpreter::new(cmr, injection, cr);
+        pi.with_query("injected")?;
+        println!(
+            "{}",
+            serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
+        );
+        pi.step()?;
+        assert_eq!(
+            pi.state.as_ref().unwrap().data.try_into_string()?,
+            "Hello injected string"
+        );
+        assert_eq!(pi.injection.variable.borrow().0, "changed");
+        Ok(())
+    }
 }
