@@ -772,13 +772,6 @@ impl ResourceQuerySegment {
         }
     }
 
-    /// Path to the resource as a string.
-    /// This is typically interpreted as a resource key in a Store object.
-    // TODO: This should be removed
-    pub fn path(&self) -> String {
-        self.key.iter().map(|x| x.encode()).join("/")
-    }
-
     pub fn encode(&self) -> String {
         let mut rqs = self.header.as_ref().map_or("".to_owned(), |x| x.encode());
         if !rqs.is_empty() {
@@ -787,7 +780,7 @@ impl ResourceQuerySegment {
         if self.key.is_empty() {
             rqs
         } else {
-            let key = self.path();
+            let key = self.key.iter().map(|x| x.encode()).join("/");
             format!("{rqs}{key}")
         }
     }

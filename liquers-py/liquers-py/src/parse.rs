@@ -369,10 +369,6 @@ impl ResourceQuerySegment {
         }
     }
 
-    pub fn path(&self) -> String {
-        self.0.path()
-    }
-
     #[getter]
     pub fn key(&self) -> Key {
         Key(self.0.key.clone())

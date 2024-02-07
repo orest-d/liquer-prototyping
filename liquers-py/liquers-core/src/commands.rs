@@ -50,6 +50,23 @@ impl<'i, Injection> CommandArguments<'i, Injection> {
     pub fn get<T: FromCommandArguments<T, Injection>>(&mut self) -> Result<T, Error> {
         T::from_arguments(self)
     }
+    /// Returns true if all parameters have been used
+    /// This is checked during the command execution
+    pub fn all_parameters_used(&self) -> bool {
+        self.argument_number == self.parameters.parameters.len()
+    }
+
+    /// Returns the number of parameters that have not been used
+    pub fn excess_parameters(&self) -> usize {
+        self.parameters.parameters.len() - self.argument_number
+    }
+    pub fn parameter_position(&self) -> Position {
+        if let Some(p) = self.parameters.parameters.get(self.argument_number) {
+            p.position.clone()
+        } else {
+            self.action_position.clone()
+        }
+    }
 }
 
 /// Command trait
@@ -179,18 +196,17 @@ where
         state: &State<V>,
         arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
-        if arguments.has_no_parameters() {
-            let result = (self.f)(state);
-            Ok(V::from(result))
-        } else {
+
+        if !arguments.all_parameters_used(){
             Err(Error::new(
                 ErrorType::TooManyParameters,
-                format!(
-                    "Too many parameters ({}) - only state expected",
-                    arguments.len()
-                ),
+                format!("Too many parameters: {} - no parameters expected, {} excess parameters found", arguments.len(), arguments.excess_parameters()),
             )
-            .with_position(&arguments.action_position))
+            .with_position(&arguments.parameter_position()))
+        }
+        else{
+            let result = (self.f)(state);
+            Ok(V::from(result))
         }
     }
 }
@@ -240,17 +256,17 @@ where
         state: &State<V>,
         arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
-        //TODO: check number of injected parameters ?
-        if arguments.len() <= 1 {
-            let argument: T = arguments.get()?;
-            let result = (self.f)(state, argument);
-            Ok(V::from(result))
-        } else {
+        let argument: T = arguments.get()?;
+        if !arguments.all_parameters_used(){
             Err(Error::new(
                 ErrorType::TooManyParameters,
-                format!("Too many parameters ({}), 1 expected", arguments.len()),
+                format!("Too many parameters: {}; {} excess parameters found", arguments.len(), arguments.excess_parameters()),
             )
-            .with_position(&arguments.action_position))
+            .with_position(&arguments.parameter_position()))
+        }
+        else{
+            let result = (self.f)(state, argument);
+            Ok(V::from(result))
         }
     }
 }
