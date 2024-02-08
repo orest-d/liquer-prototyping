@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use nom::Err;
+
 use crate::command_metadata::{self, CommandKey, CommandMetadata, CommandMetadataRegistry};
 use crate::error::{Error, ErrorType};
 use crate::plan::{Parameter, ResolvedParameters};
@@ -11,7 +13,9 @@ use crate::query::Position;
 use crate::state::State;
 use crate::value::ValueInterface;
 
+
 pub struct NoInjection;
+
 
 pub struct CommandArguments<'i, Injection> {
     pub parameters: ResolvedParameters,
@@ -137,7 +141,7 @@ where
 {
     fn execute<'i>(
         &self,
-        state: &State<V>,
+        _state: &State<V>,
         arguments: &mut CommandArguments<'i, Injection>,
     ) -> Result<V, Error> {
         if arguments.has_no_parameters() {
@@ -361,7 +365,7 @@ impl<I, V: ValueInterface> CommandRegistry<I, V> {
         K: Into<CommandKey>,
     {
         let key = key.into();
-        let mut command_metadata = executor
+        let command_metadata = executor
             .command_metadata()
             .map(|cm| {
                 let mut cm = cm.clone();

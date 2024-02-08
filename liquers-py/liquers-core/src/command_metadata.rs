@@ -237,7 +237,7 @@ impl ArgumentInfo {
             gui_info: ArgumentGUIInfo::TextField(40),
         }
     }
-    fn check(&self, realm: &str, namespace: &str, name: &str) -> Vec<CommandRegistryIssue> {
+    fn check(&self, _realm: &str, _namespace: &str, _name: &str) -> Vec<CommandRegistryIssue> {
         let issues = Vec::new();
         issues
     }

@@ -3,7 +3,6 @@ use itertools::Itertools;
 use crate::query::ActionRequest;
 use crate::query::Position;
 use std::error;
-use std::f64::consts::E;
 use std::fmt;
 use std::fmt::Display;
 

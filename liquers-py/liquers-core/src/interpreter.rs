@@ -1,15 +1,20 @@
-use std::fs::Metadata;
-
 use crate::command_metadata::CommandMetadataRegistry;
 use crate::commands::{CommandArguments, CommandExecutor};
 use crate::error::Error;
 use crate::metadata::MetadataRecord;
 use crate::parse::parse_query;
 use crate::plan::{Plan, PlanBuilder};
-use crate::state::{self, State};
+use crate::state::State;
 use crate::value::ValueInterface;
+use crate::query::Query;
 
-pub struct PlanInterpreter<I, V: ValueInterface, CE: CommandExecutor<I, V>> {
+pub trait Environment<V: ValueInterface> {
+    fn evaluate(&mut self, _query: &Query) -> Result<State<V>, Error>{
+        Err(Error::not_supported("evaluate not implemented".to_string()))
+    }
+}
+
+pub struct PlanInterpreter<I:Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>> {
     plan: Option<Plan>,
     command_metadata_registry: CommandMetadataRegistry,
     command_executor: CE,
@@ -20,7 +25,7 @@ pub struct PlanInterpreter<I, V: ValueInterface, CE: CommandExecutor<I, V>> {
     phantom_value: std::marker::PhantomData<V>,
 }
 
-impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> {
+impl<I:Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> {
     pub fn new(cmr: CommandMetadataRegistry, injection: I, ce: CE) -> Self {
         PlanInterpreter {
             plan: None,
@@ -111,18 +116,15 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> 
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
     use std::cell::RefCell;
-    use std::collections::HashMap;
     use std::rc::Rc;
 
     use super::*;
     use crate::command_metadata::ArgumentInfo;
-    use crate::command_metadata::CommandKey;
     use crate::command_metadata::CommandMetadata;
     use crate::command_metadata::CommandMetadataRegistry;
     use crate::commands::*;
-    use crate::value::Value;
+    use crate::value::{Value, ValueInterface};
     struct TestExecutor;
 
     #[derive(Clone)]
@@ -131,8 +133,20 @@ mod tests {
         variable: InjectedVariable,
     }
 
+    impl Environment<Value> for InjectionTest{
+
+    }
+
+    impl Environment<Value> for NoInjection{
+
+    }
+
     struct MutableInjectionTest {
         variable: Rc<RefCell<InjectedVariable>>,
+    }
+
+    impl Environment<Value> for MutableInjectionTest{
+
     }
 
     impl CommandExecutor<NoInjection, Value> for TestExecutor {

@@ -41,15 +41,15 @@ pub struct NoBinCache;
 impl BinCache for NoBinCache {
     fn clear(&mut self) {}
 
-    fn get_binary(&self, query: &Query) -> Option<Vec<u8>> {
+    fn get_binary(&self, _query: &Query) -> Option<Vec<u8>> {
         None
     }
 
-    fn get_metadata(&self, query: &Query) -> Option<Arc<Metadata>> {
+    fn get_metadata(&self, _query: &Query) -> Option<Arc<Metadata>> {
         None
     }
 
-    fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error> {
+    fn set_binary(&mut self, _data: &[u8], metadata: &Metadata) -> Result<(), Error> {
         Err(Error::cache_not_supported().with_query(&metadata.query()?))
     }
 
@@ -61,7 +61,7 @@ impl BinCache for NoBinCache {
         Err(Error::cache_not_supported().with_query(query))
     }
 
-    fn contains(&self, query: &Query) -> bool {
+    fn contains(&self, _query: &Query) -> bool {
         false
     }
 
@@ -94,7 +94,7 @@ impl BinCache for MemoryBinCache {
 
     fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error> {
         let query = metadata.query()?;
-        if let Some((am, data)) = self.0.get_mut(&query) {
+        if let Some((am, _)) = self.0.get_mut(&query) {
             *am = Arc::new(metadata.clone());
         } else {
             self.0.insert(query, (Arc::new(metadata.clone()), None));

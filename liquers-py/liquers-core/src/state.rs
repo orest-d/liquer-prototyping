@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{error::Error, metadata::Metadata, value::ValueInterface};
+use crate::{metadata::Metadata, value::ValueInterface};
 
 #[derive(Debug)]
 pub struct State<V: ValueInterface> {
