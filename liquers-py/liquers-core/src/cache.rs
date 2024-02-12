@@ -2,7 +2,10 @@
 #![allow(dead_code)]
 
 use crate::error::Error;
+use crate::state::State;
+use crate::value::ValueInterface;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::metadata::Metadata;
@@ -133,6 +136,57 @@ impl BinCache for MemoryBinCache {
         } else {
             None
         }
+    }
+}
+
+pub trait Cache<V:ValueInterface>:BinCache{
+    fn get(&self, query:&Query)->Result<State<V>,Error>;
+    fn set(&self, state:State<V>)->Result<(),Error>;
+}
+
+pub struct SerializingCache<V:ValueInterface,BC:BinCache>(BC,PhantomData<V>);
+
+impl<V:ValueInterface, BC:BinCache> BinCache for SerializingCache<V, BC>{
+    fn clear(&mut self) {
+        self.0.clear()
+    }
+
+    fn get_binary(&self, query: &Query) -> Option<Vec<u8>> {
+        self.0.get_binary(query)
+    }
+
+    fn get_metadata(&self, query: &Query) -> Option<Arc<Metadata>> {
+        self.0.get_metadata(query)
+    }
+
+    fn set_binary(&mut self, data: &[u8], metadata: &Metadata) -> Result<(), Error> {
+        self.0.set_binary(data, metadata)
+    }
+
+    fn set_metadata(&mut self, metadata: &Metadata) -> Result<(), Error> {
+        self.0.set_metadata(metadata)
+    }
+
+    fn remove(&mut self, query: &Query) -> Result<(), Error> {
+        self.0.remove(query)
+    }
+
+    fn contains(&self, query: &Query) -> bool {
+        self.0.contains(query)
+    }
+
+    fn keys(&self) -> Vec<Query> {
+        self.0.keys()
+    }
+}
+
+impl<V:ValueInterface, BC:BinCache> Cache<V> for SerializingCache<V, BC>{
+    fn get(&self, query:&Query)->Result<State<V>,Error> {
+        todo!()
+    }
+
+    fn set(&self, state:State<V>)->Result<(),Error> {
+        todo!()
     }
 }
 

@@ -407,7 +407,7 @@ impl From<&str> for CommandKey {
 /// CommandMetadata describes a command.
 /// It contains documentation and information about the command arguments,
 /// which is used to fill default values and type-check/validate the arguments
-/// during the [Plan] building phase.
+/// during the [crate::plan::Plan] building phase.
 /// It does not specify how to execute the command though, this is the role of a CommandExecutor.
 /// 
 /// # Example

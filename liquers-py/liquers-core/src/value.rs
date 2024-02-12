@@ -8,6 +8,10 @@ use std::{borrow::Cow, collections::BTreeMap, result::Result};
 use crate::error::{Error, ErrorType};
 use std::convert::{TryFrom, TryInto};
 
+/// Basic built-in value type
+/// Value type is the central data type of the system.
+/// It is mainly used to represent a state (via [crate::state::State] ).
+/// A custom value type can be used instead of [Value], but it must implement the [ValueInterface] trait.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum Value {
@@ -22,6 +26,9 @@ pub enum Value {
     Bytes(Vec<u8>),
 }
 
+/// ValueInterface is a trait that must be implemented by the value type.
+/// This is a central trait that defines the minimum set of operations
+/// that must be supported by the value type.
 pub trait ValueInterface: Clone {
     /// Empty value
     fn none() -> Self;
