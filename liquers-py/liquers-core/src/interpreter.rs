@@ -151,7 +151,7 @@ mod tests {
 
     impl CommandExecutor<NoInjection, Value> for TestExecutor {
         fn execute(
-            &mut self,
+            &self,
             realm: &str,
             namespace: &str,
             command_name: &str,

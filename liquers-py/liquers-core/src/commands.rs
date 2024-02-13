@@ -313,7 +313,7 @@ where
 // TODO: Use CommandKey instead of realm, namespace, command_name
 pub trait CommandExecutor<Injection, V: ValueInterface> {
     fn execute<'i>(
-        &mut self,
+        &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
@@ -324,7 +324,7 @@ pub trait CommandExecutor<Injection, V: ValueInterface> {
 
 impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn Command<I, V>>> {
     fn execute<'i>(
-        &mut self,
+        &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
@@ -332,7 +332,7 @@ impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn
         arguments: &mut CommandArguments<'i, I>,
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
-        if let Some(command) = self.get_mut(&key) {
+        if let Some(command) = self.get(&key) {
             command.execute(state, arguments)
         } else {
             Err(Error::unknown_command_executor(
@@ -405,7 +405,7 @@ impl<I, V: ValueInterface> CommandRegistry<I, V> {
 
 impl<I, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
     fn execute<'i>(
-        &mut self,
+        &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
@@ -413,7 +413,7 @@ impl<I, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
         arguments: &mut CommandArguments<'i, I>,
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
-        if let Some(command) = self.executors.get_mut(&key) {
+        if let Some(command) = self.executors.get(&key) {
             command.execute(state, arguments)
         } else {
             Err(Error::unknown_command_executor(
@@ -434,7 +434,7 @@ mod tests {
     struct TestExecutor;
     impl CommandExecutor<NoInjection, Value> for TestExecutor {
         fn execute(
-            &mut self,
+            &self,
             realm: &str,
             namespace: &str,
             command_name: &str,
