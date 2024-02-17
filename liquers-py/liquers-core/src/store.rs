@@ -219,6 +219,11 @@ pub trait Store {
     */
 }
 
+pub struct NoStore;
+
+impl Store for NoStore {}
+
+
 #[derive(Debug, Clone)]
 pub struct FileStore {
     pub path: PathBuf,
