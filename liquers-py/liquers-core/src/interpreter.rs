@@ -8,18 +8,17 @@ use crate::plan::{Plan, PlanBuilder};
 use crate::state::State;
 use crate::value::ValueInterface;
 
-pub struct PlanInterpreter<I:Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>> {
+pub struct PlanInterpreter<E:Environment, CE: CommandExecutor<E, E::Value>> {
     plan: Option<Plan>,
     command_executor: CE,
-    injection: I,
+    injection: E,
     step_number: usize,
     metadata: Option<MetadataRecord>,
-    state: Option<State<V>>,
-    phantom_value: std::marker::PhantomData<V>,
+    state: Option<State<E::Value>>,
 }
 
-impl<I:Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpreter<I, V, CE> {
-    pub fn new(injection: I, ce: CE) -> Self {
+impl<E:Environment, CE: CommandExecutor<E, E::Value>> PlanInterpreter<E, CE> {
+    pub fn new(injection: E, ce: CE) -> Self {
         PlanInterpreter {
             plan: None,
             injection: injection,
@@ -27,7 +26,6 @@ impl<I:Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>> PlanInterpr
             metadata: None,
             command_executor: ce,
             state: None,
-            phantom_value: std::marker::PhantomData,
         }
     }
     pub fn with_plan(&mut self, plan: Plan) -> &mut Self {
@@ -127,16 +125,18 @@ mod tests {
         cmr: CommandMetadataRegistry,
     }
 
-    impl Environment<Value> for InjectionTest{
+    impl Environment for InjectionTest{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             &self.cmr
         }
+        type Value = Value;
     }
 
-    impl Environment<Value> for NoInjection{
+    impl Environment for NoInjection{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             todo!()
         }
+        type Value = Value;
     }
 
     struct MutableInjectionTest {
@@ -144,10 +144,12 @@ mod tests {
         cmr: CommandMetadataRegistry,
     }
 
-    impl Environment<Value> for MutableInjectionTest{
+    impl Environment for MutableInjectionTest{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             &self.cmr
         }
+
+        type Value = Value;
     }
 
     impl<X> CommandExecutor<X, Value> for TestExecutor {

@@ -181,11 +181,11 @@ impl<V:ValueInterface, BC:BinCache> BinCache for SerializingCache<V, BC>{
 }
 
 impl<V:ValueInterface, BC:BinCache> Cache<V> for SerializingCache<V, BC>{
-    fn get(&self, query:&Query)->Result<State<V>,Error> {
+    fn get(&self, _query:&Query)->Result<State<V>,Error> {
         todo!()
     }
 
-    fn set(&self, state:State<V>)->Result<(),Error> {
+    fn set(&self, _state:State<V>)->Result<(),Error> {
         todo!()
     }
 }

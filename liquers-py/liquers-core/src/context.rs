@@ -9,8 +9,9 @@ use crate::{
     value::ValueInterface,
 };
 
-pub trait Environment<V: ValueInterface> {
-    fn evaluate(&mut self, _query: &Query) -> Result<State<V>, Error> {
+pub trait Environment {
+    type Value: ValueInterface;
+    fn evaluate(&mut self, _query: &Query) -> Result<State<Self::Value>, Error> {
         Err(Error::not_supported("evaluate not implemented".to_string()))
     }
     fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry;
@@ -30,10 +31,12 @@ impl<V: ValueInterface> SimpleEnvironment<V> {
     }
 }
 
-impl<V: ValueInterface> Environment<V> for SimpleEnvironment<V> {
+impl<V: ValueInterface> Environment for SimpleEnvironment<V> {
     fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
         &self.command_metadata_registry
     }
+
+    type Value=V;
 }
 
 // TODO: Add cache support
@@ -66,13 +69,13 @@ impl<I, V: ValueInterface, CE: CommandExecutor<I, V>, S: Store> MasterContext<I,
     }
 }
 
-pub struct Context<'c, I: Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>, S: Store> {
+pub struct Context<'c, I: Environment, V: ValueInterface, CE: CommandExecutor<I, V>, S: Store> {
     master_context: &'c MasterContext<I, V, CE, S>,
     metadata: MetadataRecord,
     cwd: Key,
 }
 
-impl<'c, I: Environment<V>, V: ValueInterface, CE: CommandExecutor<I, V>, S: Store>
+impl<'c, I: Environment, V: ValueInterface, CE: CommandExecutor<I, V>, S: Store>
     Context<'c, I, V, CE, S>
 {
     pub fn new(master_context: &'c MasterContext<I, V, CE, S>) -> Self {
