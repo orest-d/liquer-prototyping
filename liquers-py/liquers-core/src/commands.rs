@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use nom::Err;
@@ -19,13 +20,13 @@ pub struct NoInjection;
 
 pub struct CommandArguments<'i, Injection> {
     pub parameters: ResolvedParameters,
-    pub injection: &'i mut Injection,
+    pub injection: &'i Injection,
     pub action_position: Position,
     pub argument_number: usize,
 }
 
 impl<'i, Injection> CommandArguments<'i, Injection> {
-    pub fn new(parameters: ResolvedParameters, injection: &'i mut Injection) -> Self {
+    pub fn new(parameters: ResolvedParameters, injection: &'i Injection) -> Self {
         CommandArguments {
             parameters,
             injection,
@@ -114,6 +115,7 @@ where
 }
 */
 
+#[derive(Clone)]
 pub struct Command0<R, F>
 where
     F: Fn() -> R,
@@ -137,6 +139,8 @@ where
 impl<F, Injection, V, R> Command<Injection, V> for Command0<R, F>
 where
     F: Fn() -> R,
+    R:Clone,
+    F:Clone,
     V: ValueInterface + From<R>,
 {
     fn execute<'i>(
@@ -168,6 +172,7 @@ V: ValueInterface + From<R> + 'static,
 }
 */
 
+#[derive(Clone)]
 pub struct Command1<S, R, F>
 where
     F: Fn(S) -> R,
@@ -193,6 +198,8 @@ where
 impl<F, Injection, V, R> Command<Injection, V> for Command1<&State<V>, R, F>
 where
     F: Fn(&State<V>) -> R,
+    R:Clone,
+    F:Clone,
     V: ValueInterface + From<R>,
 {
     fn execute<'i>(
@@ -225,6 +232,8 @@ V: ValueInterface + From<R> + 'static,
     }
 }
 */
+
+#[derive(Clone)]
 pub struct Command2<S, T, R, F>
 where
     F: Fn(S, T) -> R,
@@ -252,6 +261,9 @@ where
 impl<F, Injection, V, T, R> Command<Injection, V> for Command2<&State<V>, T, R, F>
 where
     F: Fn(&State<V>, T) -> R,
+    R:Clone,
+    F:Clone,
+    T:Clone,
     V: ValueInterface + From<R>,
     T: FromCommandArguments<T, Injection>,
 {
@@ -344,6 +356,7 @@ impl<I, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn
         }
     }
 }
+
 pub struct CommandRegistry<I, V: ValueInterface> {
     executors: HashMap<CommandKey, Box<dyn Command<I, V>>>,
     pub command_metadata_registry: CommandMetadataRegistry,

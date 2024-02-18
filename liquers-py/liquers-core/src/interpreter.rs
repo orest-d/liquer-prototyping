@@ -8,23 +8,21 @@ use crate::plan::{Plan, PlanBuilder};
 use crate::state::State;
 use crate::value::ValueInterface;
 
-pub struct PlanInterpreter<E:Environment, CE: CommandExecutor<E, E::Value>> {
+pub struct PlanInterpreter<E:Environment> {
     plan: Option<Plan>,
-    command_executor: CE,
     injection: E,
     step_number: usize,
     metadata: Option<MetadataRecord>,
     state: Option<State<E::Value>>,
 }
 
-impl<E:Environment, CE: CommandExecutor<E, E::Value>> PlanInterpreter<E, CE> {
-    pub fn new(injection: E, ce: CE) -> Self {
+impl<E:Environment> PlanInterpreter<E> {
+    pub fn new(injection: E) -> Self {
         PlanInterpreter {
             plan: None,
             injection: injection,
             step_number: 0,
             metadata: None,
-            command_executor: ce,
             state: None,
         }
     }
@@ -39,6 +37,7 @@ impl<E:Environment, CE: CommandExecutor<E, E::Value>> PlanInterpreter<E, CE> {
     pub fn with_query(&mut self, query: &str) -> Result<&mut Self, Error> {
         let query = parse_query(query)?;
         println!("Query: {}", query);
+        println!("Command registry:\n{}\n", serde_yaml::to_string(self.injection.get_command_metadata_registry()).unwrap());
         let mut pb = PlanBuilder::new(query, self.injection.get_command_metadata_registry());
         let plan = pb.build()?;
         Ok(self.with_plan(plan))
@@ -60,10 +59,11 @@ impl<E:Environment, CE: CommandExecutor<E, E::Value>> PlanInterpreter<E, CE> {
                         parameters,
                     } => {
                         let mut arguments =
-                            CommandArguments::new(parameters.clone(), &mut self.injection);
+                            CommandArguments::new(parameters.clone(), &self.injection);
                         arguments.action_position = position.clone();
                         let input_state = self.state.take().unwrap_or(State::new());
-                        let result = self.command_executor.execute(
+                        
+                        let result = self.injection.get_command_executor().execute(
                             &realm,
                             ns,
                             &action_name,
@@ -116,40 +116,79 @@ mod tests {
     use crate::commands::*;
     use crate::context::SimpleEnvironment;
     use crate::value::{Value, ValueInterface};
-    struct TestExecutor;
+    pub struct TestExecutor;
 
-    #[derive(Clone)]
+    #[derive(Debug, Clone)]
     struct InjectedVariable(String);
     struct InjectionTest {
         variable: InjectedVariable,
-        cmr: CommandMetadataRegistry,
+        cr: CommandRegistry<Self, Value>
     }
 
     impl Environment for InjectionTest{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
-            &self.cmr
+            &self.cr.command_metadata_registry
+        }
+        fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
+            &mut self.cr.command_metadata_registry
         }
         type Value = Value;
+        type CommandExecutor = CommandRegistry<Self, Value>;
+
+        fn get_command_executor(&self) -> &Self::CommandExecutor {
+            &self.cr
+        }
+
+        fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
+            &mut self.cr
+        }
     }
 
     impl Environment for NoInjection{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
-            todo!()
+            panic!("No injection has no command metadata registry")
+        }
+        
+        fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
+            panic!("No injection has no command metadata registry")
         }
         type Value = Value;
+        type CommandExecutor = TestExecutor;
+
+        fn get_command_executor(&self) -> &Self::CommandExecutor {
+            &TestExecutor
+        }
+
+        fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
+            panic!("No injection has non-mutable command executor")
+        }
     }
 
     struct MutableInjectionTest {
         variable: Rc<RefCell<InjectedVariable>>,
-        cmr: CommandMetadataRegistry,
+        cr: CommandRegistry<Self, Value>
     }
 
     impl Environment for MutableInjectionTest{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
-            &self.cmr
+            &self.cr.command_metadata_registry
+        }
+        fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
+            &mut self.cr.command_metadata_registry
         }
 
         type Value = Value;
+
+        type CommandExecutor = CommandRegistry<Self, Value>;
+
+        fn get_command_executor(&self) -> &Self::CommandExecutor {
+            &self.cr
+        }
+
+        fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
+            &mut self.cr
+        }
+
     }
 
     impl<X> CommandExecutor<X, Value> for TestExecutor {
@@ -169,12 +208,11 @@ mod tests {
     }
     #[test]
     fn test_plan_interpreter() -> Result<(), Error> {
-        let mut cmr = CommandMetadataRegistry::new();
-        cmr.add_command(&CommandMetadata::new("test"));
-        let ce = TestExecutor;
-        let env: SimpleEnvironment<Value> = SimpleEnvironment::new(cmr);
+        let mut env: SimpleEnvironment<Value> = SimpleEnvironment::new();
+        env.get_mut_command_metadata_registry().add_command(&CommandMetadata::new("test"));
+        env.get_mut_command_executor().register_command("test", Command0::from(|| "Hello".to_string()))?;
 
-        let mut pi = PlanInterpreter::new(env, ce);
+        let mut pi = PlanInterpreter::new(env);
         pi.with_query("test").unwrap();
         //println!("{:?}", pi.plan);
         pi.step()?;
@@ -183,28 +221,26 @@ mod tests {
     }
     #[test]
     fn test_hello_world_interpreter() -> Result<(), Error> {
-        let mut cr: CommandRegistry<SimpleEnvironment<Value>, Value> = CommandRegistry::new();
+        let mut env: SimpleEnvironment<Value> = SimpleEnvironment::new();
+        {
+            let mut cr = env.get_mut_command_executor();
+            cr.register_command("hello", Command0::from(|| "Hello".to_string()))?;
+            cr.register_command(
+                "greet",
+                Command2::from(|state: &State<Value>, who: String| -> String {
+                    let greeting = state.data.try_into_string().unwrap();
+                    format!("{} {}!", greeting, who)
+                }),
+            )?
+            .with_state_argument(ArgumentInfo::string_argument("greeting"))
+            .with_argument(ArgumentInfo::string_argument("who"));        
+        }
 
-        cr.register_command("hello", Command0::from(|| "Hello".to_string()))?;
-        cr.register_command(
-            "greet",
-            Command2::from(|state: &State<Value>, who: String| -> String {
-                let greeting = state.data.try_into_string().unwrap();
-                format!("{} {}!", greeting, who)
-            }),
-        )?
-        .with_state_argument(ArgumentInfo::string_argument("greeting"))
-        .with_argument(ArgumentInfo::string_argument("who"));
-
-        let cmr = cr.command_metadata_registry.clone();
-
-        let env: SimpleEnvironment<Value> = SimpleEnvironment::new(cmr);
-
-        let mut pi = PlanInterpreter::new(env, cr);
+        let mut pi = PlanInterpreter::new(env);
         pi.with_query("hello/greet-world").unwrap();
         //println!("{:?}", pi.plan);
         println!(
-            "{}",
+            "############################ PLAN ############################\n{}\n",
             serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
         );
         pi.step()?;
@@ -245,9 +281,8 @@ mod tests {
         let mut pi = PlanInterpreter::new(
             InjectionTest {
                 variable: InjectedVariable("injected string".to_string()),
-                cmr: cmr,
+                cr: cr,
             },
-            cr,
         );
         pi.with_query("injected")?;
         println!(
@@ -290,14 +325,13 @@ mod tests {
         )?
         .with_state_argument(ArgumentInfo::string_argument("nothing"));
 
-        let cmr = cr.command_metadata_registry.clone();
         let injection = MutableInjectionTest {
             variable: Rc::new(RefCell::new(InjectedVariable(
                 "injected string".to_string(),
             ))),
-            cmr: cmr,
+            cr: cr,
         };
-        let mut pi = PlanInterpreter::new(injection, cr);
+        let mut pi = PlanInterpreter::new(injection);
         pi.with_query("injected")?;
         println!(
             "{}",

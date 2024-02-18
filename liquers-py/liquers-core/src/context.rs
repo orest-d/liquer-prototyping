@@ -1,6 +1,6 @@
 use crate::{
     command_metadata::CommandMetadataRegistry,
-    commands::CommandExecutor,
+    commands::{CommandExecutor, CommandRegistry},
     error::Error,
     metadata::MetadataRecord,
     query::{Key, Query},
@@ -9,34 +9,49 @@ use crate::{
     value::ValueInterface,
 };
 
-pub trait Environment {
+pub trait Environment: Sized{
     type Value: ValueInterface;
+    type CommandExecutor: CommandExecutor<Self, Self::Value>;
+
     fn evaluate(&mut self, _query: &Query) -> Result<State<Self::Value>, Error> {
         Err(Error::not_supported("evaluate not implemented".to_string()))
     }
     fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry;
+    fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry;
+    fn get_command_executor(&self) -> &Self::CommandExecutor;
+    fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor;
 }
 
 pub struct SimpleEnvironment<V: ValueInterface> {
-    command_metadata_registry: CommandMetadataRegistry,
-    phantom_value: std::marker::PhantomData<V>,
+    command_registry: CommandRegistry<Self,V>
 }
 
 impl<V: ValueInterface> SimpleEnvironment<V> {
-    pub fn new(command_metadata_registry: CommandMetadataRegistry) -> Self {
+    pub fn new() -> Self {
         SimpleEnvironment {
-            command_metadata_registry: command_metadata_registry,
-            phantom_value: std::marker::PhantomData,
+            command_registry: CommandRegistry::new()
         }
     }
 }
 
 impl<V: ValueInterface> Environment for SimpleEnvironment<V> {
-    fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
-        &self.command_metadata_registry
+    type Value=V;
+    type CommandExecutor=CommandRegistry<Self,V>;
+
+    fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
+        &mut self.command_registry.command_metadata_registry
     }
 
-    type Value=V;
+    fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
+        &self.command_registry.command_metadata_registry
+    }
+
+    fn get_command_executor(&self) -> &Self::CommandExecutor {
+        &self.command_registry
+    }
+    fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
+        &mut self.command_registry
+    }
 }
 
 // TODO: Add cache support
