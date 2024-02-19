@@ -1,4 +1,4 @@
-use std::{cell::RefCell, sync::{Arc, Mutex}};
+use std::{sync::{Arc, Mutex}};
 
 use crate::{
     command_metadata::CommandMetadataRegistry,

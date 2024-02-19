@@ -428,7 +428,7 @@ impl Store for FileStore {
 }
 
 
-struct MemoryStore {
+pub struct MemoryStore {
     data: std::collections::HashMap<Key, (Vec<u8>, Metadata)>,
     prefix: Key,
 }
@@ -531,6 +531,7 @@ impl Store for MemoryStore {
     }
 
     fn is_dir(&self, key: &Key) -> bool {
+
         let keys = self.data.keys().filter(|k| k.has_key_prefix(key)).cloned().collect::<Vec<_>>();
         for k in keys {
             if k.len() > key.len() {
@@ -577,8 +578,30 @@ impl Store for MemoryStore {
 mod tests {
     //    use crate::query::Key;
 
-    //    use super::*;
+    use super::*;
+
+    use crate::parse::parse_key;
 
     #[test]
-    fn test() {}
+    fn test_simple_store() {
+        let mut store = MemoryStore::new(&Key::new());
+        let key = parse_key("a/b/c").unwrap();
+        let data = b"test data".to_vec();
+        let metadata = Metadata::MetadataRecord(MetadataRecord::new());
+
+        assert!(!store.contains(&key));
+        assert!(store.keys().unwrap().is_empty());
+        assert!(!store.is_dir(&parse_key("a/b").unwrap()));
+
+        store.set(&key, &data, &metadata).unwrap();
+        assert!(store.contains(&key));
+        assert!(store.keys().unwrap().contains(&key));
+        assert!(store.is_dir(&parse_key("a/b").unwrap()));
+        assert_eq!(store.keys().unwrap().len(), 1);
+
+        let (data2, metadata2) = store.get(&key).unwrap();
+        assert_eq!(data, data2);
+        store.remove(&key).unwrap();
+        assert!(!store.contains(&key));
+    }
 }

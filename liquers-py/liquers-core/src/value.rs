@@ -92,6 +92,9 @@ pub trait ValueInterface: core::fmt::Debug + Clone + Sized{
         }
     }
 
+    /// From bytes
+    fn from_bytes(b: Vec<u8>) -> Self;
+
     /// Try to get a string out
     fn try_into_string(&self) -> Result<String, Error>;
 
@@ -153,6 +156,9 @@ impl ValueInterface for Value {
             Value::I64(n) => Ok(format!("{n}")),
             Value::F64(n) => Ok(format!("{n}")),
             Value::Text(t) => Ok(t.to_owned()),
+            Value::Bytes(b) => {
+                Ok(String::from_utf8_lossy(b).to_string())
+            },
             _ => Err(Error::conversion_error(self.identifier(), "string")),
         }
     }
@@ -280,6 +286,10 @@ impl ValueInterface for Value {
 
     fn from_bool(b: bool) -> Self {
         Value::Bool(b)
+    }
+
+    fn from_bytes(b: Vec<u8>) -> Self {
+        Value::Bytes(b)
     }
 }
 

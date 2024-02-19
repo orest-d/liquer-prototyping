@@ -1,4 +1,3 @@
-use crate::command_metadata::CommandMetadataRegistry;
 use crate::commands::{CommandArguments, CommandExecutor};
 use crate::context::Environment;
 use crate::error::Error;
@@ -46,7 +45,12 @@ impl<E:Environment> PlanInterpreter<E> {
         if let Some(plan) = &mut self.plan {
             if let Some(step) = plan.steps.get(self.step_number) {
                 match step {
-                    crate::plan::Step::GetResource(_) => todo!(),
+                    crate::plan::Step::GetResource(key) => {
+                        let store = self.injection.get_store();            
+                        let (data, metadata) = store.lock().unwrap().get(&key).map_err(|e| Error::general_error(format!("Store error: {}",e)))?;
+                        let value = <<E as Environment>::Value as ValueInterface>::from_bytes(data);
+                        self.state.replace(State::new().with_data(value).with_metadata(metadata));
+                    },
                     crate::plan::Step::GetResourceMetadata(_) => todo!(),
                     crate::plan::Step::GetNamedResource(_) => todo!(),
                     crate::plan::Step::GetNamedResourceMetadata(_) => todo!(),
@@ -117,6 +121,9 @@ mod tests {
     use crate::command_metadata::CommandMetadataRegistry;
     use crate::commands::*;
     use crate::context::SimpleEnvironment;
+    use crate::metadata::Metadata;
+    use crate::parse::parse_key;
+    use crate::query::Key;
     use crate::value::{Value, ValueInterface};
     pub struct TestExecutor;
 
@@ -363,4 +370,42 @@ mod tests {
         assert_eq!(pi.injection.variable.borrow().0, "changed");
         Ok(())
     }
+
+    #[test]
+    fn test_resource_interpreter() -> Result<(), Error> {
+        let mut env: SimpleEnvironment<Value> = SimpleEnvironment::new();
+        env.with_store(Box::new(crate::store::MemoryStore::new(&Key::new())));      
+        {
+            let store = env.get_store();
+            let mut store = store.lock().unwrap();
+            store.set(&parse_key("hello.txt").unwrap(), "Hello TEXT".as_bytes(), &Metadata::new()).unwrap();
+            let mut cr = env.get_mut_command_executor();
+            cr.register_command(
+                "greet",
+                Command2::from(|state: &State<Value>, who: String| -> String {
+                    let greeting = state.data.try_into_string().unwrap();
+                    format!("{} {}!", greeting, who)
+                }),
+            )?
+            .with_state_argument(ArgumentInfo::string_argument("greeting"))
+            .with_argument(ArgumentInfo::string_argument("who"));        
+        }
+
+        let mut pi = PlanInterpreter::new(env);
+        pi.with_query("hello.txt/-/greet-world").unwrap();
+        //println!("{:?}", pi.plan);
+        println!(
+            "############################ PLAN ############################\n{}\n",
+            serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
+        );
+        pi.step()?;
+        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello TEXT");
+        pi.step()?;
+        assert_eq!(
+            pi.state.as_ref().unwrap().data.try_into_string()?,
+            "Hello TEXT world!"
+        );
+        Ok(())
+    }
+
 }
