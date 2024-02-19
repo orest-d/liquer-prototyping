@@ -108,6 +108,8 @@ impl<E:Environment> PlanInterpreter<E> {
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::sync::Arc;
+    use std::sync::Mutex;
 
     use super::*;
     use crate::command_metadata::ArgumentInfo;
@@ -122,7 +124,8 @@ mod tests {
     struct InjectedVariable(String);
     struct InjectionTest {
         variable: InjectedVariable,
-        cr: CommandRegistry<Self, Value>
+        cr: CommandRegistry<Self, Value>,
+        store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
     impl Environment for InjectionTest{
@@ -142,15 +145,19 @@ mod tests {
         fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
             &mut self.cr
         }
+
+        fn get_store(&self) -> Arc<Mutex<Box<dyn crate::store::Store>>> {
+            self.store.clone()
+        }
     }
 
     impl Environment for NoInjection{
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
-            panic!("No injection has no command metadata registry")
+            panic!("NoInjection has no command metadata registry")
         }
         
         fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
-            panic!("No injection has no command metadata registry")
+            panic!("NoInjection has no command metadata registry")
         }
         type Value = Value;
         type CommandExecutor = TestExecutor;
@@ -160,13 +167,18 @@ mod tests {
         }
 
         fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
-            panic!("No injection has non-mutable command executor")
+            panic!("NoInjection has non-mutable command executor")
         }
+
+        fn get_store(&self) -> Arc<Mutex<Box<dyn crate::store::Store>>> {
+            panic!("NoInjection has no store")
+        }        
     }
 
     struct MutableInjectionTest {
         variable: Rc<RefCell<InjectedVariable>>,
-        cr: CommandRegistry<Self, Value>
+        cr: CommandRegistry<Self, Value>,
+        store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
     impl Environment for MutableInjectionTest{
@@ -187,6 +199,10 @@ mod tests {
 
         fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
             &mut self.cr
+        }
+
+        fn get_store(&self) -> std::sync::Arc<std::sync::Mutex<Box<dyn crate::store::Store>>> {
+            self.store.clone()
         }
 
     }
@@ -282,6 +298,7 @@ mod tests {
             InjectionTest {
                 variable: InjectedVariable("injected string".to_string()),
                 cr: cr,
+                store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
             },
         );
         pi.with_query("injected")?;
@@ -330,6 +347,7 @@ mod tests {
                 "injected string".to_string(),
             ))),
             cr: cr,
+            store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
         };
         let mut pi = PlanInterpreter::new(injection);
         pi.with_query("injected")?;

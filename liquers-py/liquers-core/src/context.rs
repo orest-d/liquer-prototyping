@@ -1,3 +1,5 @@
+use std::{cell::RefCell, sync::{Arc, Mutex}};
+
 use crate::{
     command_metadata::CommandMetadataRegistry,
     commands::{CommandExecutor, CommandRegistry},
@@ -5,7 +7,7 @@ use crate::{
     metadata::MetadataRecord,
     query::{Key, Query},
     state::State,
-    store::Store,
+    store::{NoStore, Store},
     value::ValueInterface,
 };
 
@@ -20,17 +22,24 @@ pub trait Environment: Sized{
     fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry;
     fn get_command_executor(&self) -> &Self::CommandExecutor;
     fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor;
+    fn get_store(&self) -> Arc<Mutex<Box<dyn Store>>>;
 }
 
 pub struct SimpleEnvironment<V: ValueInterface> {
+    store: Arc<Mutex<Box<dyn Store>>>,
     command_registry: CommandRegistry<Self,V>
 }
 
 impl<V: ValueInterface> SimpleEnvironment<V> {
     pub fn new() -> Self {
         SimpleEnvironment {
+            store: Arc::new(Mutex::new(Box::new(NoStore))),
             command_registry: CommandRegistry::new()
         }
+    }
+    pub fn with_store(&mut self, store: Box<dyn Store>) -> &mut Self {
+        self.store = Arc::new(Mutex::new(store));
+        self
     }
 }
 
@@ -51,6 +60,9 @@ impl<V: ValueInterface> Environment for SimpleEnvironment<V> {
     }
     fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor {
         &mut self.command_registry
+    }
+    fn get_store(&self) -> Arc<Mutex<Box<dyn Store>>>{
+        self.store.clone()
     }
 }
 

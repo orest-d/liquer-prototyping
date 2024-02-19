@@ -427,6 +427,151 @@ impl Store for FileStore {
     }
 }
 
+
+struct MemoryStore {
+    data: std::collections::HashMap<Key, (Vec<u8>, Metadata)>,
+    prefix: Key,
+}
+
+impl MemoryStore {
+    pub fn new(prefix: &Key) -> MemoryStore {
+        MemoryStore {
+            data: std::collections::HashMap::new(),
+            prefix: prefix.to_owned(),
+        }
+    }
+}
+
+impl Store for MemoryStore {
+    fn store_name(&self) -> String {
+        format!(
+            "{} Memory store",
+            self.key_prefix()
+        )
+    }
+
+    fn key_prefix(&self) -> Key {
+        self.prefix.to_owned()
+    }
+
+    fn default_metadata(&self, _key: &Key, _is_dir: bool) -> MetadataRecord {
+        MetadataRecord::new()
+    }
+
+    fn finalize_metadata(
+        &self,
+        metadata: Metadata,
+        _key: &Key,
+        _data: &[u8],
+        _update: bool,
+    ) -> Metadata {
+        metadata
+    }
+
+    fn finalize_metadata_empty(
+        &self,
+        metadata: Metadata,
+        _key: &Key,
+        _is_dir: bool,
+        _update: bool,
+    ) -> Metadata {
+        metadata
+    }
+
+    fn get(&self, key: &Key) -> Result<(Vec<u8>, Metadata), StoreError> {
+        match self.data.get(key) {
+            Some((data, metadata)) => Ok((data.to_owned(), metadata.to_owned())),
+            None => Err(StoreError::KeyNotFound(key.to_owned())),
+        }
+    }
+
+    fn get_bytes(&self, key: &Key) -> Result<Vec<u8>, StoreError> {
+        match self.data.get(key) {
+            Some((data, _)) => Ok(data.to_owned()),
+            None => Err(StoreError::KeyNotFound(key.to_owned())),
+        }
+    }
+
+    fn get_metadata(&self, key: &Key) -> Result<Metadata, StoreError> {
+        match self.data.get(key) {
+            Some((_, metadata)) => Ok(metadata.to_owned()),
+            None => Err(StoreError::KeyNotFound(key.to_owned())),
+        }
+    }
+
+    fn set(&mut self, key: &Key, data: &[u8], metadata: &Metadata) -> Result<(), StoreError> {
+        self.data.insert(key.to_owned(), (data.to_owned(), metadata.to_owned()));
+        Ok(())
+    }
+
+    fn set_metadata(&mut self, key: &Key, metadata: &Metadata) -> Result<(), StoreError> {
+        if let Some((data, _)) = self.data.get(key) {
+            self.data.insert(key.to_owned(), (data.to_owned(), metadata.to_owned()));
+            Ok(())
+        } else {
+            Err(StoreError::KeyNotFound(key.to_owned()))
+        }
+    }
+
+    fn remove(&mut self, key: &Key) -> Result<(), StoreError> {
+        self.data.remove(key);
+        Ok(())
+    }
+
+    fn removedir(&mut self, key: &Key) -> Result<(), StoreError> {
+        let keys = self.data.keys().filter(|k| k.has_key_prefix(key)).cloned().collect::<Vec<_>>();
+        for k in keys {
+            self.data.remove(&k);
+        }
+        Ok(())
+    }
+
+    fn contains(&self, key: &Key) -> bool {
+        self.data.contains_key(key)
+    }
+
+    fn is_dir(&self, key: &Key) -> bool {
+        let keys = self.data.keys().filter(|k| k.has_key_prefix(key)).cloned().collect::<Vec<_>>();
+        for k in keys {
+            if k.len() > key.len() {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn keys(&self) -> Result<Vec<Key>, StoreError> {
+        let keys = self.data.keys().cloned().collect::<Vec<_>>();
+        Ok(keys)
+    }
+
+    fn listdir(&self, key: &Key) -> Result<Vec<String>, StoreError> {
+        let keys = self.listdir_keys(key)?;
+        Ok(keys.iter().map(|x| x.to_string()).collect())
+    }
+
+    fn listdir_keys(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
+        let n = key.len() + 1;
+        let keys = self.data.keys().filter(|k| k.has_key_prefix(key) && k.len()==n).cloned().collect::<Vec<_>>();
+        Ok(keys)
+    }
+
+    fn listdir_keys_deep(&self, key: &Key) -> Result<Vec<Key>, StoreError> {
+        let keys = self.data.keys().filter(|k| k.has_key_prefix(key)).cloned().collect::<Vec<_>>();
+        Ok(keys)
+    }
+
+    fn makedir(&self, key: &Key) -> Result<(), StoreError> {
+        // TODO: implement correct makedir
+        Ok(())
+    }
+
+    fn is_supported(&self, _key: &Key) -> bool {
+        true
+    }
+    
+}
+
 // Unittests
 #[cfg(test)]
 mod tests {
