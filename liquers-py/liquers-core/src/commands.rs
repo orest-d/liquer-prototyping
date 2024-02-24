@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use nom::Err;
 
 use crate::command_metadata::{self, CommandKey, CommandMetadata, CommandMetadataRegistry};
-use crate::context::{Context, Environment};
+use crate::context::{self, Context, Environment};
 use crate::error::{Error, ErrorType};
 use crate::plan::{Parameter, ResolvedParameters};
 use crate::query::Position;
@@ -19,27 +19,16 @@ use crate::value::ValueInterface;
 pub struct NoInjection;
 
 
-pub struct CommandArguments<'i, E:Environment> {
+pub struct CommandArguments {
     pub parameters: ResolvedParameters,
-    //pub injection: &'i Injection,
-    pub context: Context<'i, E>,
     pub action_position: Position,
     pub argument_number: usize,
 }
 
-impl<'i, E:Environment> CommandArguments<'i, E> {
-    pub fn from_environment(parameters: ResolvedParameters, environment: &'i E) -> Self {
+impl CommandArguments{
+    pub fn new(parameters: ResolvedParameters) -> Self {
         CommandArguments {
             parameters,
-            context: environment.new_context(),
-            action_position: Position::unknown(),
-            argument_number: 0,
-        }
-    }
-    pub fn new(parameters: ResolvedParameters, context: Context<'i, E>) -> Self {
-        CommandArguments {
-            parameters,
-            context,
             action_position: Position::unknown(),
             argument_number: 0,
         }
@@ -63,8 +52,8 @@ impl<'i, E:Environment> CommandArguments<'i, E> {
             ))
         }
     }
-    pub fn get<T: FromCommandArguments<T, E>>(&mut self) -> Result<T, Error> {
-        T::from_arguments(self)
+    pub fn get<'e, T: FromCommandArguments<T, E>,E:Environment>(&mut self, context:&mut Context<'e,E>) -> Result<T, Error> {
+        T::from_arguments(self, context)
     }
     /// Returns true if all parameters have been used
     /// This is checked during the command execution
@@ -88,11 +77,12 @@ impl<'i, E:Environment> CommandArguments<'i, E> {
 /// Command trait
 /// This trait encapsulates a command that can be executed,
 /// typically a function
-pub trait Command<Injection:Environment, V: ValueInterface> {
-    fn execute<'i>(
+pub trait Command<E:Environment, V: ValueInterface> {
+    fn execute<'e>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, Injection>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'e, E>,
     ) -> Result<V, Error>;
 
     /// Returns the default metadata of the command
@@ -158,7 +148,8 @@ where
     fn execute<'i>(
         &self,
         _state: &State<V>,
-        arguments: &mut CommandArguments<'i, Injection>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'i, Injection>,
     ) -> Result<V, Error> {
         if arguments.has_no_parameters() {
             let result = (self.f)();
@@ -172,17 +163,7 @@ where
         }
     }
 }
-/*
-impl<F: Fn() -> R + 'static, Injection, V, R> From<F> for Box<dyn Command<Injection, V>>
-where
-R: 'static,
-V: ValueInterface + From<R> + 'static,
-{
-    fn from(f: F) -> Self {
-        Box::new(Command0::from(f))
-    }
-}
-*/
+
 
 #[derive(Clone)]
 pub struct Command1<S, R, F>
@@ -207,18 +188,19 @@ where
     }
 }
 
-impl<F, Injection, V, R> Command<Injection, V> for Command1<&State<V>, R, F>
+impl<F, E, V, R> Command<E, V> for Command1<&State<V>, R, F>
 where
     F: Fn(&State<V>) -> R,
     R:Clone,
     F:Clone,
     V: ValueInterface + From<R>,
-    Injection:Environment,
+    E:Environment,
 {
-    fn execute<'i>(
+    fn execute<'e>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, Injection>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'e, E>,
     ) -> Result<V, Error> {
 
         if !arguments.all_parameters_used(){
@@ -271,22 +253,23 @@ where
     }
 }
 
-impl<F, Injection, V, T, R> Command<Injection, V> for Command2<&State<V>, T, R, F>
+impl<F, E, V, T, R> Command<E, V> for Command2<&State<V>, T, R, F>
 where
     F: Fn(&State<V>, T) -> R,
     R:Clone,
     F:Clone,
     T:Clone,
     V: ValueInterface + From<R>,
-    T: FromCommandArguments<T, Injection>,
-    Injection:Environment,
+    T: FromCommandArguments<T, E>,
+    E:Environment,
 {
-    fn execute<'i>(
+    fn execute<'e>(
         &self,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, Injection>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'e, E>,
     ) -> Result<V, Error> {
-        let argument: T = arguments.get()?;
+        let argument: T = arguments.get(context)?;
         if !arguments.all_parameters_used(){
             Err(Error::new(
                 ErrorType::TooManyParameters,
@@ -320,16 +303,16 @@ impl FromParameter<String> for String {
 }
 
 pub trait FromCommandArguments<T, E:Environment> {
-    fn from_arguments<'i>(args: &mut CommandArguments<'i, E>) -> Result<T, Error>;
+    fn from_arguments<'e>(args: &mut CommandArguments, context:&mut Context<'e, E> ) -> Result<T, Error>;
     fn is_injected() -> bool;
 }
 
-impl<I, T> FromCommandArguments<T, I> for T
+impl<E, T> FromCommandArguments<T, E> for T
 where
     T: FromParameter<T>,
-    I:Environment,
+    E:Environment,
 {
-    fn from_arguments<'i>(args: &mut CommandArguments<'i, I>) -> Result<T, Error> {
+    fn from_arguments<'e>(args: &mut CommandArguments, _context:&mut Context<'e, E>) -> Result<T, Error> {
         T::from_parameter(args.get_parameter()?)
     }
     fn is_injected() -> bool {
@@ -339,28 +322,30 @@ where
 
 // TODO: Use CommandKey instead of realm, namespace, command_name
 pub trait CommandExecutor<E:Environment, V: ValueInterface> {
-    fn execute<'i>(
+    fn execute<'e>(
         &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, E>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'e, E>,
     ) -> Result<V, Error>;
 }
 
-impl<I:Environment, V: ValueInterface> CommandExecutor<I, V> for HashMap<CommandKey, Box<dyn Command<I, V>>> {
-    fn execute<'i>(
+impl<E:Environment, V: ValueInterface> CommandExecutor<E, V> for HashMap<CommandKey, Box<dyn Command<E, V>>> {
+    fn execute<'e>(
         &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, I>,
+        arguments: &mut CommandArguments,
+        context: &mut Context<'e, E>,
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.get(&key) {
-            command.execute(state, arguments)
+            command.execute(state, arguments, context)
         } else {
             Err(Error::unknown_command_executor(
                 realm,
@@ -377,7 +362,7 @@ pub struct CommandRegistry<I, V: ValueInterface> {
     pub command_metadata_registry: CommandMetadataRegistry,
 }
 
-impl<I:Environment, V: ValueInterface> CommandRegistry<I, V> {
+impl<E:Environment, V: ValueInterface> CommandRegistry<E, V> {
     pub fn new() -> Self {
         CommandRegistry {
             executors: HashMap::new(),
@@ -387,7 +372,7 @@ impl<I:Environment, V: ValueInterface> CommandRegistry<I, V> {
     pub fn register_boxed_command<K>(
         &mut self,
         key: K,
-        executor: Box<dyn Command<I, V>>,
+        executor: Box<dyn Command<E, V>>,
     ) -> Result<&mut CommandMetadata, Error>
     where
         K: Into<CommandKey>,
@@ -412,10 +397,10 @@ impl<I:Environment, V: ValueInterface> CommandRegistry<I, V> {
     pub fn register_command<K, T>(&mut self, key: K, f: T) -> Result<&mut CommandMetadata, Error>
     where
         K: Into<CommandKey>,
-        T: Command<I, V> + 'static,
+        T: Command<E, V> + 'static,
     {
         let key = key.into();
-        let command: Box<dyn Command<I, V>> = Box::new(f);
+        let command: Box<dyn Command<E, V>> = Box::new(f);
         self.register_boxed_command(key, command)
     }
     /*
@@ -431,18 +416,19 @@ impl<I:Environment, V: ValueInterface> CommandRegistry<I, V> {
     */
 }
 
-impl<I:Environment, V: ValueInterface> CommandExecutor<I, V> for CommandRegistry<I, V> {
-    fn execute<'i>(
+impl<E:Environment, V: ValueInterface> CommandExecutor<E, V> for CommandRegistry<E, V> {
+    fn execute<'e>(
         &self,
         realm: &str,
         namespace: &str,
         command_name: &str,
         state: &State<V>,
-        arguments: &mut CommandArguments<'i, I>,
+        arguments: &mut CommandArguments,
+        context:&mut Context<'e, E>
     ) -> Result<V, Error> {
         let key = CommandKey::new(realm, namespace, command_name);
         if let Some(command) = self.executors.get(&key) {
-            command.execute(state, arguments)
+            command.execute(state, arguments, context)
         } else {
             Err(Error::unknown_command_executor(
                 realm,
@@ -461,19 +447,20 @@ mod tests {
 
     struct TestExecutor;
     impl CommandExecutor<NoInjection, Value> for TestExecutor {
-        fn execute(
+        fn execute<'e>(
             &self,
             realm: &str,
             namespace: &str,
             command_name: &str,
             state: &State<Value>,
-            arguments: &mut CommandArguments<'_, NoInjection>,
+            arguments: &mut CommandArguments,
+            context: &mut Context<'e, NoInjection>,
         ) -> Result<Value, Error> {
             assert_eq!(realm, "");
             assert_eq!(namespace, "");
             assert_eq!(command_name, "test");
             assert!(state.data.is_none());
-            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments)
+            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments, context)
         }
     }
     #[test]
@@ -493,17 +480,19 @@ mod tests {
             ..Parameter::default()
         });
         let mut injection= NoInjection;
-        let mut ca = CommandArguments::from_environment(rp, &mut injection);
-        let s: String = ca.get().unwrap();
+        let mut context = Context::new(&mut injection);
+        let mut ca = CommandArguments::new(rp);
+        let s: String = ca.get(&mut context).unwrap();
         assert_eq!(s, "Hello");
     }
     #[test]
     fn test_execute_command() -> Result<(), Error> {
         let c = Command0::from(|| -> String { "Hello".into() });
         let mut injection = NoInjection;
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut injection);
+        let mut context = Context::new(&mut injection);
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
         let state: State<Value> = State::new();
-        let s: Value = c.execute(&state, &mut ca).unwrap();
+        let s: Value = c.execute(&state, &mut ca, &mut context).unwrap();
         assert_eq!(s.try_into_string()?, "Hello");
         Ok(())
     }
@@ -511,10 +500,11 @@ mod tests {
     #[test]
     fn test_command_executor() -> Result<(), Error> {
         let mut injection = NoInjection;
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut injection);
+        let mut context = Context::new(&mut injection);
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
         let state = State::new();
         let s = TestExecutor
-            .execute("", "", "test", &state, &mut ca)
+            .execute("", "", "test", &state, &mut ca, &mut context)
             .unwrap();
         assert_eq!(s.try_into_string()?, "Hello");
         Ok(())
@@ -533,11 +523,12 @@ mod tests {
 
         let state = State::new();
         let mut injection = NoInjection;
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut injection);
-        let s = hm.execute("", "", "test", &state, &mut ca).unwrap();
+        let mut context = Context::new(&injection);
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
+        let s = hm.execute("", "", "test", &state, &mut ca, &mut context).unwrap();
         assert_eq!(s.try_into_string()?, "Hello1");
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut injection);
-        let s = hm.execute("", "", "test2", &state, &mut ca).unwrap();
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
+        let s = hm.execute("", "", "test2", &state, &mut ca, &mut context).unwrap();
         assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())
     }
@@ -555,11 +546,12 @@ mod tests {
         let state = State::new();
 
         let mut environment = NoInjection;
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut environment);
-        let s = cr.execute("", "", "test", &state, &mut ca).unwrap();
+        let mut context = Context::new(&environment);
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
+        let s = cr.execute("", "", "test", &state, &mut ca, &mut context).unwrap();
         assert_eq!(s.try_into_string()?, "Hello1");
-        let mut ca = CommandArguments::from_environment(ResolvedParameters::new(), &mut environment);
-        let s = cr.execute("", "", "test2", &state, &mut ca).unwrap();
+        let mut ca = CommandArguments::new(ResolvedParameters::new());
+        let s = cr.execute("", "", "test2", &state, &mut ca, &mut context).unwrap();
         assert_eq!(s.try_into_string()?, "Hello2");
         Ok(())
     }

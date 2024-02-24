@@ -103,7 +103,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                 position,
                 parameters,
             } => {
-                let mut arguments = CommandArguments::new(parameters.clone(), context.clone());
+                let mut arguments = CommandArguments::new(parameters.clone());
                 arguments.action_position = position.clone();
 
                 let result = self.environment.get_command_executor().execute(
@@ -112,10 +112,11 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                     &action_name,
                     &input_state,
                     &mut arguments,
+                    context,
                 )?;
                 let state = State::new()
                     .with_data(result)
-                    .with_metadata(arguments.context.get_metadata().clone().into());
+                    .with_metadata(context.get_metadata().clone().into());
                 context.reset();
                 return Ok(state);
             }
@@ -149,6 +150,7 @@ mod tests {
     use crate::command_metadata::CommandMetadata;
     use crate::command_metadata::CommandMetadataRegistry;
     use crate::commands::*;
+    use crate::context;
     use crate::context::SimpleEnvironment;
     use crate::metadata::Metadata;
     use crate::parse::parse_key;
@@ -243,18 +245,19 @@ mod tests {
     }
 
     impl<X:Environment> CommandExecutor<X, Value> for TestExecutor {
-        fn execute(
+        fn execute<'e>(
             &self,
             realm: &str,
             namespace: &str,
             command_name: &str,
             state: &State<Value>,
-            arguments: &mut CommandArguments<'_, X>,
+            arguments: &mut CommandArguments,
+            context: &mut context::Context<'e, X>,
         ) -> Result<Value, Error> {
             assert_eq!(realm, "");
             assert_eq!(namespace, "root");
             assert_eq!(command_name, "test");
-            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments)
+            Command0::from(|| -> String { "Hello".into() }).execute(state, arguments, context)
         }
     }
     #[test]
@@ -308,10 +311,11 @@ mod tests {
     fn test_interpreter_with_value_injection() -> Result<(), Error> {
         let mut cr: CommandRegistry<InjectionTest, Value> = CommandRegistry::new();
         impl FromCommandArguments<InjectedVariable, InjectionTest> for InjectedVariable {
-            fn from_arguments(
-                args: &mut CommandArguments<'_, InjectionTest>,
+            fn from_arguments<'e>(
+                args: &mut CommandArguments,
+                context:&mut Context<'e, InjectionTest>
             ) -> Result<InjectedVariable, Error> {
-                Ok(args.context.get_environment().variable.to_owned())
+                Ok(context.get_environment().variable.to_owned())
             }
 
             fn is_injected() -> bool {
@@ -353,10 +357,11 @@ mod tests {
         impl<'v> FromCommandArguments<Rc<RefCell<InjectedVariable>>, MutableInjectionTest>
             for Rc<RefCell<InjectedVariable>>
         {
-            fn from_arguments<'i>(
-                args: &mut CommandArguments<'i, MutableInjectionTest>,
+            fn from_arguments<'e>(
+                args: &mut CommandArguments,
+                context:&mut Context<'e, MutableInjectionTest>
             ) -> Result<Rc<RefCell<InjectedVariable>>, Error> {
-                Ok(args.context.get_environment().variable.clone())
+                Ok(context.get_environment().variable.clone())
             }
 
             fn is_injected() -> bool {

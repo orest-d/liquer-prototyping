@@ -59,16 +59,16 @@ impl <'e, E: Environment> Context<'e, E> {
         self.metadata.with_filename(filename);
     }
     pub fn debug(&mut self, message:&str){
-        &self.metadata.debug(message);
+        self.metadata.debug(message);
     }
     pub fn info(&mut self, message:&str){
-        &self.metadata.info(message);
+        self.metadata.info(message);
     }
     pub fn warning(&mut self, message:&str){
-        &self.metadata.warning(message);
+        self.metadata.warning(message);
     }
     pub fn error(&mut self, message:&str){
-        &self.metadata.error(message);
+        self.metadata.error(message);
     }
     pub fn reset(&mut self){
         self.metadata = MetadataRecord::new();
