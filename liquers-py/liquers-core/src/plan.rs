@@ -366,20 +366,23 @@ impl Plan {
             steps: Vec::new(),
         }
     }
-    fn info(&mut self, message: String) {
+    pub fn info(&mut self, message: String) {
         self.steps.push(Step::Info(message));
     }
-    fn warning(&mut self, message: String) {
+    pub fn warning(&mut self, message: String) {
         self.steps.push(Step::Warning(message));
     }
-    fn error(&mut self, message: String) {
+    pub fn error(&mut self, message: String) {
         self.steps.push(Step::Error(message));
     }
-    fn has_error(&self) -> bool {
+    pub fn has_error(&self) -> bool {
         self.steps.iter().any(|x| x.is_error())
     }
-    fn has_warning(&self) -> bool {
+    pub fn has_warning(&self) -> bool {
         self.steps.iter().any(|x| x.is_warning())
+    }
+    pub fn len(&self) -> usize {
+        self.steps.len()
     }
 }
 

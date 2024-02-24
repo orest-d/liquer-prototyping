@@ -1,27 +1,25 @@
 use crate::commands::{CommandArguments, CommandExecutor};
-use crate::context::Environment;
+use crate::context::{Context, Environment};
 use crate::error::Error;
 use crate::metadata::MetadataRecord;
 use crate::parse::parse_query;
-use crate::plan::{Plan, PlanBuilder};
+use crate::plan::{Plan, PlanBuilder, Step};
 use crate::state::State;
 use crate::value::ValueInterface;
 
-pub struct PlanInterpreter<E:Environment> {
+pub struct PlanInterpreter<'a, E: Environment> {
     plan: Option<Plan>,
-    injection: E,
+    environment: &'a E,
     step_number: usize,
-    metadata: Option<MetadataRecord>,
     state: Option<State<E::Value>>,
 }
 
-impl<E:Environment> PlanInterpreter<E> {
-    pub fn new(injection: E) -> Self {
+impl<'a, E: Environment> PlanInterpreter<'a, E> {
+    pub fn new(environment: &'a E) -> Self {
         PlanInterpreter {
             plan: None,
-            injection: injection,
+            environment,
             step_number: 0,
-            metadata: None,
             state: None,
         }
     }
@@ -29,82 +27,113 @@ impl<E:Environment> PlanInterpreter<E> {
         println!("with plan {:?}", plan);
         self.plan = Some(plan);
         self.step_number = 0;
-        self.metadata.replace(MetadataRecord::new());
         self
     }
 
     pub fn with_query(&mut self, query: &str) -> Result<&mut Self, Error> {
         let query = parse_query(query)?;
         println!("Query: {}", query);
-        println!("Command registry:\n{}\n", serde_yaml::to_string(self.injection.get_command_metadata_registry()).unwrap());
-        let mut pb = PlanBuilder::new(query, self.injection.get_command_metadata_registry());
+        println!(
+            "Command registry:\n{}\n",
+            serde_yaml::to_string(self.environment.get_command_metadata_registry()).unwrap()
+        );
+        let mut pb = PlanBuilder::new(query, self.environment.get_command_metadata_registry());
         let plan = pb.build()?;
         Ok(self.with_plan(plan))
     }
-    pub fn step(&mut self) -> Result<(), Error> {
-        if let Some(plan) = &mut self.plan {
-            if let Some(step) = plan.steps.get(self.step_number) {
-                match step {
-                    crate::plan::Step::GetResource(key) => {
-                        let store = self.injection.get_store();            
-                        let (data, metadata) = store.lock().unwrap().get(&key).map_err(|e| Error::general_error(format!("Store error: {}",e)))?;
-                        let value = <<E as Environment>::Value as ValueInterface>::from_bytes(data);
-                        self.state.replace(State::new().with_data(value).with_metadata(metadata));
-                    },
-                    crate::plan::Step::GetResourceMetadata(_) => todo!(),
-                    crate::plan::Step::GetNamedResource(_) => todo!(),
-                    crate::plan::Step::GetNamedResourceMetadata(_) => todo!(),
-                    crate::plan::Step::Evaluate(_) => todo!(),
-                    crate::plan::Step::Action {
-                        realm,
-                        ns,
-                        action_name,
-                        position,
-                        parameters,
-                    } => {
-                        let mut arguments =
-                            CommandArguments::new(parameters.clone(), &self.injection);
-                        arguments.action_position = position.clone();
-                        let input_state = self.state.take().unwrap_or(State::new());
-                        
-                        let result = self.injection.get_command_executor().execute(
-                            &realm,
-                            ns,
-                            &action_name,
-                            &input_state,
-                            &mut arguments,
-                        )?;
-                        let state = State::new().with_data(result).with_metadata(
-                            self.metadata.take().unwrap_or(MetadataRecord::new()).into(),
-                        );
-                        //TODO: Make sure metadata is correctly filled - now empty metadata is created.
-                        self.state.replace(state);
-                    }
-                    crate::plan::Step::Filename(name) => {
-                        self.metadata
-                            .as_mut()
-                            .unwrap()
-                            .with_filename(name.name.clone());
-                    }
-                    crate::plan::Step::Info(m) => {
-                        self.metadata.as_mut().unwrap().info(&m);
-                    }
-                    crate::plan::Step::Warning(m) => {
-                        self.metadata.as_mut().unwrap().warning(&m);
-                    }
-                    crate::plan::Step::Error(m) => {
-                        self.metadata.as_mut().unwrap().error(&m);
-                    }
-                    crate::plan::Step::Plan(_) => todo!(),
-                }
-                self.step_number += 1;
-            } else {
-                return Err(Error::general_error("No more steps".to_string()));
-            }
-        } else {
+    pub fn run(&mut self) -> Result<(), Error> {
+        let mut context = self.environment.new_context();
+        if self.plan.is_none() {
             return Err(Error::general_error("No plan".to_string()));
         }
+        for i in 0..self.len() {
+            let input_state = self.state.take().unwrap_or(self.initial_state());
+            let step = self.get_step(i)?;
+            let output_state = self.do_step(&step, input_state, &mut context)?;
+            self.state = Some(output_state);
+        }
         Ok(())
+    }
+    pub fn initial_state(&self) -> State<<E as Environment>::Value> {
+        State::new()
+    }
+    pub fn len(&self) -> usize {
+        if let Some(plan) = &self.plan {
+            return plan.steps.len();
+        }
+        0
+    }
+    pub fn get_step(&self,i:usize) -> Result<&Step, Error> {
+        if let Some(plan) = &self.plan {
+            if let Some(step) = plan.steps.get(i) {
+                return Ok(step);
+            }
+            else {
+                return Err(Error::general_error(format!("Step {} requested, plan has {} steps", i, plan.steps.len())));
+            }
+        }
+        Err(Error::general_error("No plan".to_string()))
+    }
+    pub fn do_step(
+        &self,
+        step: &Step,
+        input_state:State<<E as Environment>::Value>,
+        context: &mut Context<'a, E>,
+    ) -> Result<State<<E as Environment>::Value>, Error> {
+        match step {
+            crate::plan::Step::GetResource(key) => {
+                let store = self.environment.get_store();
+                let (data, metadata) = store
+                    .lock()
+                    .unwrap()
+                    .get(&key)
+                    .map_err(|e| Error::general_error(format!("Store error: {}", e)))?;
+                let value = <<E as Environment>::Value as ValueInterface>::from_bytes(data);
+                return Ok(State::new().with_data(value).with_metadata(metadata));
+
+            }
+            crate::plan::Step::GetResourceMetadata(_) => todo!(),
+            crate::plan::Step::GetNamedResource(_) => todo!(),
+            crate::plan::Step::GetNamedResourceMetadata(_) => todo!(),
+            crate::plan::Step::Evaluate(_) => todo!(),
+            crate::plan::Step::Action {
+                realm,
+                ns,
+                action_name,
+                position,
+                parameters,
+            } => {
+                let mut arguments = CommandArguments::new(parameters.clone(), self.environment);
+                arguments.action_position = position.clone();
+
+                let result = self.environment.get_command_executor().execute(
+                    &realm,
+                    ns,
+                    &action_name,
+                    &input_state,
+                    &mut arguments,
+                )?;
+                let state = State::new()
+                    .with_data(result)
+                    .with_metadata(context.get_metadata().clone().into());
+                context.reset();
+                return Ok(state);
+            }
+            crate::plan::Step::Filename(name) => {
+                context.set_filename(name.name.clone());
+            }
+            crate::plan::Step::Info(m) => {
+                context.info(&m);
+            }
+            crate::plan::Step::Warning(m) => {
+                context.warning(&m);
+            }
+            crate::plan::Step::Error(m) => {
+                context.error(&m);
+            }
+            crate::plan::Step::Plan(_) => todo!(),
+        }
+        Ok(input_state)
     }
 }
 
@@ -135,7 +164,7 @@ mod tests {
         store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
-    impl Environment for InjectionTest{
+    impl Environment for InjectionTest {
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             &self.cr.command_metadata_registry
         }
@@ -158,11 +187,11 @@ mod tests {
         }
     }
 
-    impl Environment for NoInjection{
+    impl Environment for NoInjection {
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             panic!("NoInjection has no command metadata registry")
         }
-        
+
         fn get_mut_command_metadata_registry(&mut self) -> &mut CommandMetadataRegistry {
             panic!("NoInjection has no command metadata registry")
         }
@@ -179,7 +208,7 @@ mod tests {
 
         fn get_store(&self) -> Arc<Mutex<Box<dyn crate::store::Store>>> {
             panic!("NoInjection has no store")
-        }        
+        }
     }
 
     struct MutableInjectionTest {
@@ -188,7 +217,7 @@ mod tests {
         store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
-    impl Environment for MutableInjectionTest{
+    impl Environment for MutableInjectionTest {
         fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
             &self.cr.command_metadata_registry
         }
@@ -211,7 +240,6 @@ mod tests {
         fn get_store(&self) -> std::sync::Arc<std::sync::Mutex<Box<dyn crate::store::Store>>> {
             self.store.clone()
         }
-
     }
 
     impl<X> CommandExecutor<X, Value> for TestExecutor {
@@ -232,13 +260,15 @@ mod tests {
     #[test]
     fn test_plan_interpreter() -> Result<(), Error> {
         let mut env: SimpleEnvironment<Value> = SimpleEnvironment::new();
-        env.get_mut_command_metadata_registry().add_command(&CommandMetadata::new("test"));
-        env.get_mut_command_executor().register_command("test", Command0::from(|| "Hello".to_string()))?;
+        env.get_mut_command_metadata_registry()
+            .add_command(&CommandMetadata::new("test"));
+        env.get_mut_command_executor()
+            .register_command("test", Command0::from(|| "Hello".to_string()))?;
 
-        let mut pi = PlanInterpreter::new(env);
+        let mut pi = PlanInterpreter::new(&env);
         pi.with_query("test").unwrap();
         //println!("{:?}", pi.plan);
-        pi.step()?;
+        pi.run()?;
         assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello");
         Ok(())
     }
@@ -256,19 +286,17 @@ mod tests {
                 }),
             )?
             .with_state_argument(ArgumentInfo::string_argument("greeting"))
-            .with_argument(ArgumentInfo::string_argument("who"));        
+            .with_argument(ArgumentInfo::string_argument("who"));
         }
 
-        let mut pi = PlanInterpreter::new(env);
+        let mut pi = PlanInterpreter::new(&env);
         pi.with_query("hello/greet-world").unwrap();
         //println!("{:?}", pi.plan);
         println!(
             "############################ PLAN ############################\n{}\n",
             serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
         );
-        pi.step()?;
-        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello");
-        pi.step()?;
+        pi.run()?;
         assert_eq!(
             pi.state.as_ref().unwrap().data.try_into_string()?,
             "Hello world!"
@@ -301,19 +329,18 @@ mod tests {
 
         let cmr = cr.command_metadata_registry.clone();
 
-        let mut pi = PlanInterpreter::new(
-            InjectionTest {
-                variable: InjectedVariable("injected string".to_string()),
-                cr: cr,
-                store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
-            },
-        );
+        let env = InjectionTest{
+            variable: InjectedVariable("injected string".to_string()),
+            cr: cr,
+            store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
+        };
+        let mut pi = PlanInterpreter::new(&env);
         pi.with_query("injected")?;
         println!(
             "{}",
             serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
         );
-        pi.step()?;
+        pi.run()?;
         assert_eq!(
             pi.state.as_ref().unwrap().data.try_into_string()?,
             "Hello injected string"
@@ -356,29 +383,35 @@ mod tests {
             cr: cr,
             store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
         };
-        let mut pi = PlanInterpreter::new(injection);
+        let mut pi = PlanInterpreter::new(&injection);
         pi.with_query("injected")?;
         println!(
             "{}",
             serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
         );
-        pi.step()?;
+        pi.run()?;
         assert_eq!(
             pi.state.as_ref().unwrap().data.try_into_string()?,
             "Hello injected string"
         );
-        assert_eq!(pi.injection.variable.borrow().0, "changed");
+        assert_eq!(pi.environment.variable.borrow().0, "changed");
         Ok(())
     }
 
     #[test]
     fn test_resource_interpreter() -> Result<(), Error> {
         let mut env: SimpleEnvironment<Value> = SimpleEnvironment::new();
-        env.with_store(Box::new(crate::store::MemoryStore::new(&Key::new())));      
+        env.with_store(Box::new(crate::store::MemoryStore::new(&Key::new())));
         {
             let store = env.get_store();
             let mut store = store.lock().unwrap();
-            store.set(&parse_key("hello.txt").unwrap(), "Hello TEXT".as_bytes(), &Metadata::new()).unwrap();
+            store
+                .set(
+                    &parse_key("hello.txt").unwrap(),
+                    "Hello TEXT".as_bytes(),
+                    &Metadata::new(),
+                )
+                .unwrap();
             let mut cr = env.get_mut_command_executor();
             cr.register_command(
                 "greet",
@@ -388,24 +421,21 @@ mod tests {
                 }),
             )?
             .with_state_argument(ArgumentInfo::string_argument("greeting"))
-            .with_argument(ArgumentInfo::string_argument("who"));        
+            .with_argument(ArgumentInfo::string_argument("who"));
         }
 
-        let mut pi = PlanInterpreter::new(env);
+        let mut pi = PlanInterpreter::new(&env);
         pi.with_query("hello.txt/-/greet-world").unwrap();
         //println!("{:?}", pi.plan);
         println!(
             "############################ PLAN ############################\n{}\n",
             serde_yaml::to_string(pi.plan.as_ref().unwrap()).unwrap()
         );
-        pi.step()?;
-        assert_eq!(pi.state.as_ref().unwrap().data.try_into_string()?, "Hello TEXT");
-        pi.step()?;
+        pi.run()?;
         assert_eq!(
             pi.state.as_ref().unwrap().data.try_into_string()?,
             "Hello TEXT world!"
         );
         Ok(())
     }
-
 }
