@@ -87,7 +87,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                     .lock()
                     .unwrap()
                     .get(&key)
-                    .map_err(|e| Error::general_error(format!("Store error: {}", e)))?;
+                    .map_err(|e| Error::general_error(format!("Store error: {}", e)))?;  // TODO: use store error type - convert to Error
                 let value = <<E as Environment>::Value as ValueInterface>::from_bytes(data);
                 return Ok(State::new().with_data(value).with_metadata(metadata));
 
@@ -103,7 +103,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                 position,
                 parameters,
             } => {
-                let mut arguments = CommandArguments::new(parameters.clone(), self.environment);
+                let mut arguments = CommandArguments::new(parameters.clone(), context.clone());
                 arguments.action_position = position.clone();
 
                 let result = self.environment.get_command_executor().execute(
@@ -115,7 +115,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                 )?;
                 let state = State::new()
                     .with_data(result)
-                    .with_metadata(context.get_metadata().clone().into());
+                    .with_metadata(arguments.context.get_metadata().clone().into());
                 context.reset();
                 return Ok(state);
             }
@@ -242,7 +242,7 @@ mod tests {
         }
     }
 
-    impl<X> CommandExecutor<X, Value> for TestExecutor {
+    impl<X:Environment> CommandExecutor<X, Value> for TestExecutor {
         fn execute(
             &self,
             realm: &str,
@@ -311,7 +311,7 @@ mod tests {
             fn from_arguments(
                 args: &mut CommandArguments<'_, InjectionTest>,
             ) -> Result<InjectedVariable, Error> {
-                Ok(args.injection.variable.to_owned())
+                Ok(args.context.get_environment().variable.to_owned())
             }
 
             fn is_injected() -> bool {
@@ -356,7 +356,7 @@ mod tests {
             fn from_arguments<'i>(
                 args: &mut CommandArguments<'i, MutableInjectionTest>,
             ) -> Result<Rc<RefCell<InjectedVariable>>, Error> {
-                Ok(args.injection.variable.clone())
+                Ok(args.context.get_environment().variable.clone())
             }
 
             fn is_injected() -> bool {

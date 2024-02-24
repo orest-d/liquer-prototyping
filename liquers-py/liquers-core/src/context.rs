@@ -4,7 +4,7 @@ use crate::{
     command_metadata::CommandMetadataRegistry,
     commands::{CommandExecutor, CommandRegistry},
     error::Error,
-    metadata::MetadataRecord,
+    metadata::{self, MetadataRecord},
     query::{Key, Query},
     state::State,
     store::{NoStore, Store},
@@ -40,6 +40,9 @@ impl <'e, E: Environment> Context<'e, E> {
             metadata: MetadataRecord::new()
         }
     }
+    pub fn get_environment(&self) -> &'e E {
+        self.environment
+    }
     pub fn get_command_metadata_registry(&self) -> &CommandMetadataRegistry {
         self.environment.get_command_metadata_registry()
     }
@@ -69,6 +72,15 @@ impl <'e, E: Environment> Context<'e, E> {
     }
     pub fn reset(&mut self){
         self.metadata = MetadataRecord::new();
+    }
+}
+
+impl<'e, E:Environment> Clone for Context<'e, E>{
+    fn clone(&self) -> Self {
+        Context {
+            environment: self.environment,
+            metadata: self.metadata.clone()
+        }
     }
 }
 
