@@ -116,7 +116,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                 )?;
                 let state = State::new()
                     .with_data(result)
-                    .with_metadata(context.get_metadata().clone().into());
+                    .with_metadata(context.get_metadata().into());
                 context.reset();
                 return Ok(state);
             }

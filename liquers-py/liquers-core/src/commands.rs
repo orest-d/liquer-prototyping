@@ -164,6 +164,30 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct Command0c<E, R, F>
+where
+    F: Fn(&mut Context<'static,E>) -> R,
+    E:Environment,
+{
+    f: F,
+    environment: PhantomData<E>,
+    result: PhantomData<R>,
+}
+
+impl<E, R, F> From<F> for Command0c<E, R, F>
+where
+    F: Fn(&mut Context<'static,E>) -> R,
+    E:Environment,
+{
+    fn from(f: F) -> Self {
+        Command0c {
+            f,
+            environment: Default::default(),
+            result: Default::default(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Command1<S, R, F>
