@@ -1,5 +1,5 @@
 use crate::commands::{CommandArguments, CommandExecutor};
-use crate::context::{Context, Environment};
+use crate::context::{Context, EnvRef, Environment};
 use crate::error::Error;
 use crate::metadata::MetadataRecord;
 use crate::parse::parse_query;
@@ -7,15 +7,15 @@ use crate::plan::{Plan, PlanBuilder, Step};
 use crate::state::State;
 use crate::value::ValueInterface;
 
-pub struct PlanInterpreter<'a, E: Environment> {
+pub struct PlanInterpreter<ER: EnvRef<E>, E: Environment> {
     plan: Option<Plan>,
-    environment: &'a E,
+    environment: ER,
     step_number: usize,
     state: Option<State<E::Value>>,
 }
 
-impl<'a, E: Environment> PlanInterpreter<'a, E> {
-    pub fn new(environment: &'a E) -> Self {
+impl<ER: EnvRef<E>, E: Environment<EnvironmentReference = ER>> PlanInterpreter<ER, E> {
+    pub fn new(environment: ER) -> Self {
         PlanInterpreter {
             plan: None,
             environment,
@@ -32,12 +32,13 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
 
     pub fn with_query(&mut self, query: &str) -> Result<&mut Self, Error> {
         let query = parse_query(query)?;
+        let cmr = self.environment.get().get_command_metadata_registry();
         println!("Query: {}", query);
         println!(
             "Command registry:\n{}\n",
-            serde_yaml::to_string(self.environment.get_command_metadata_registry()).unwrap()
+            serde_yaml::to_string(cmr).unwrap()
         );
-        let mut pb = PlanBuilder::new(query, self.environment.get_command_metadata_registry());
+        let mut pb = PlanBuilder::new(query, cmr);
         let plan = pb.build()?;
         Ok(self.with_plan(plan))
     }
@@ -49,7 +50,7 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
         for i in 0..self.len() {
             let input_state = self.state.take().unwrap_or(self.initial_state());
             let step = self.get_step(i)?;
-            let output_state = self.do_step(&step, input_state, &mut context)?;
+            let output_state = self.do_step(&step, input_state, context.clone_context())?;
             self.state = Some(output_state);
         }
         Ok(())
@@ -63,13 +64,16 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
         }
         0
     }
-    pub fn get_step(&self,i:usize) -> Result<&Step, Error> {
+    pub fn get_step(&self, i: usize) -> Result<&Step, Error> {
         if let Some(plan) = &self.plan {
             if let Some(step) = plan.steps.get(i) {
                 return Ok(step);
-            }
-            else {
-                return Err(Error::general_error(format!("Step {} requested, plan has {} steps", i, plan.steps.len())));
+            } else {
+                return Err(Error::general_error(format!(
+                    "Step {} requested, plan has {} steps",
+                    i,
+                    plan.steps.len()
+                )));
             }
         }
         Err(Error::general_error("No plan".to_string()))
@@ -77,8 +81,8 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
     pub fn do_step(
         &self,
         step: &Step,
-        input_state:State<<E as Environment>::Value>,
-        context: &mut Context<'a, E>,
+        input_state: State<<E as Environment>::Value>,
+        context: Context<ER, E>,
     ) -> Result<State<<E as Environment>::Value>, Error> {
         match step {
             crate::plan::Step::GetResource(key) => {
@@ -87,10 +91,9 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                     .lock()
                     .unwrap()
                     .get(&key)
-                    .map_err(|e| Error::general_error(format!("Store error: {}", e)))?;  // TODO: use store error type - convert to Error
+                    .map_err(|e| Error::general_error(format!("Store error: {}", e)))?; // TODO: use store error type - convert to Error
                 let value = <<E as Environment>::Value as ValueInterface>::from_bytes(data);
                 return Ok(State::new().with_data(value).with_metadata(metadata));
-
             }
             crate::plan::Step::GetResourceMetadata(_) => todo!(),
             crate::plan::Step::GetNamedResource(_) => todo!(),
@@ -106,18 +109,19 @@ impl<'a, E: Environment> PlanInterpreter<'a, E> {
                 let mut arguments = CommandArguments::new(parameters.clone());
                 arguments.action_position = position.clone();
 
-                let result = self.environment.get_command_executor().execute(
+                let ce = self.environment.get().get_command_executor();
+                let result = ce.execute(
                     &realm,
                     ns,
                     &action_name,
                     &input_state,
                     &mut arguments,
-                    context,
+                    context.clone_context(),
                 )?;
                 let state = State::new()
                     .with_data(result)
                     .with_metadata(context.get_metadata().into());
-                context.reset();
+                /// TODO - reset metadata ?
                 return Ok(state);
             }
             crate::plan::Step::Filename(name) => {
@@ -152,6 +156,7 @@ mod tests {
     use crate::commands::*;
     use crate::context;
     use crate::context::SimpleEnvironment;
+    use crate::context::StatEnvRef;
     use crate::metadata::Metadata;
     use crate::parse::parse_key;
     use crate::query::Key;
@@ -162,7 +167,7 @@ mod tests {
     struct InjectedVariable(String);
     struct InjectionTest {
         variable: InjectedVariable,
-        cr: CommandRegistry<Self, Value>,
+        cr: CommandRegistry<StatEnvRef<Self>, Self, Value>,
         store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
@@ -174,7 +179,8 @@ mod tests {
             &mut self.cr.command_metadata_registry
         }
         type Value = Value;
-        type CommandExecutor = CommandRegistry<Self, Value>;
+        type CommandExecutor = CommandRegistry<Self::EnvironmentReference, Self, Value>;
+        type EnvironmentReference = StatEnvRef<Self>;
 
         fn get_command_executor(&self) -> &Self::CommandExecutor {
             &self.cr
@@ -199,6 +205,7 @@ mod tests {
         }
         type Value = Value;
         type CommandExecutor = TestExecutor;
+        type EnvironmentReference = StatEnvRef<Self>;
 
         fn get_command_executor(&self) -> &Self::CommandExecutor {
             &TestExecutor
@@ -215,7 +222,7 @@ mod tests {
 
     struct MutableInjectionTest {
         variable: Rc<RefCell<InjectedVariable>>,
-        cr: CommandRegistry<Self, Value>,
+        cr: CommandRegistry<StatEnvRef<Self>, Self, Value>,
         store: Arc<Mutex<Box<dyn crate::store::Store>>>,
     }
 
@@ -228,8 +235,8 @@ mod tests {
         }
 
         type Value = Value;
-
-        type CommandExecutor = CommandRegistry<Self, Value>;
+        type CommandExecutor = CommandRegistry<StatEnvRef<Self>, Self, Value>;
+        type EnvironmentReference = StatEnvRef<Self>;
 
         fn get_command_executor(&self) -> &Self::CommandExecutor {
             &self.cr
@@ -244,15 +251,15 @@ mod tests {
         }
     }
 
-    impl<X:Environment> CommandExecutor<X, Value> for TestExecutor {
-        fn execute<'e>(
+    impl<ER: EnvRef<E>, E: Environment> CommandExecutor<ER, E, Value> for TestExecutor {
+        fn execute(
             &self,
             realm: &str,
             namespace: &str,
             command_name: &str,
             state: &State<Value>,
             arguments: &mut CommandArguments,
-            context: &mut context::Context<'e, X>,
+            context: context::Context<ER, E>,
         ) -> Result<Value, Error> {
             assert_eq!(realm, "");
             assert_eq!(namespace, "root");
@@ -267,8 +274,9 @@ mod tests {
             .add_command(&CommandMetadata::new("test"));
         env.get_mut_command_executor()
             .register_command("test", Command0::from(|| "Hello".to_string()))?;
+        let envref = env.to_ref();
 
-        let mut pi = PlanInterpreter::new(&env);
+        let mut pi = PlanInterpreter::new(envref);
         pi.with_query("test").unwrap();
         //println!("{:?}", pi.plan);
         pi.run()?;
@@ -292,7 +300,7 @@ mod tests {
             .with_argument(ArgumentInfo::string_argument("who"));
         }
 
-        let mut pi = PlanInterpreter::new(&env);
+        let mut pi = PlanInterpreter::new(env.to_ref());
         pi.with_query("hello/greet-world").unwrap();
         //println!("{:?}", pi.plan);
         println!(
@@ -309,11 +317,14 @@ mod tests {
 
     #[test]
     fn test_interpreter_with_value_injection() -> Result<(), Error> {
-        let mut cr: CommandRegistry<InjectionTest, Value> = CommandRegistry::new();
-        impl FromCommandArguments<InjectedVariable, InjectionTest> for InjectedVariable {
-            fn from_arguments<'e>(
+        let mut cr: CommandRegistry<StatEnvRef<InjectionTest>, InjectionTest, Value> =
+            CommandRegistry::new();
+        impl FromCommandArguments<InjectedVariable, StatEnvRef<InjectionTest>, InjectionTest>
+            for InjectedVariable
+        {
+            fn from_arguments(
                 args: &mut CommandArguments,
-                context:&mut Context<'e, InjectionTest>
+                context: &Context<StatEnvRef<InjectionTest>, InjectionTest>,
             ) -> Result<InjectedVariable, Error> {
                 Ok(context.get_environment().variable.to_owned())
             }
@@ -333,12 +344,13 @@ mod tests {
 
         let cmr = cr.command_metadata_registry.clone();
 
-        let env = InjectionTest{
+        let env = Box::leak(Box::new(InjectionTest {
             variable: InjectedVariable("injected string".to_string()),
             cr: cr,
             store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
-        };
-        let mut pi = PlanInterpreter::new(&env);
+        }));
+        let envref = StatEnvRef(env);
+        let mut pi = PlanInterpreter::new(envref);
         pi.with_query("injected")?;
         println!(
             "{}",
@@ -353,13 +365,18 @@ mod tests {
     }
     #[test]
     fn test_interpreter_with_mutable_injection() -> Result<(), Error> {
-        let mut cr: CommandRegistry<MutableInjectionTest, Value> = CommandRegistry::new();
-        impl<'v> FromCommandArguments<Rc<RefCell<InjectedVariable>>, MutableInjectionTest>
-            for Rc<RefCell<InjectedVariable>>
+        let mut cr: CommandRegistry<StatEnvRef<MutableInjectionTest>, MutableInjectionTest, Value> =
+            CommandRegistry::new();
+        impl<'v>
+            FromCommandArguments<
+                Rc<RefCell<InjectedVariable>>,
+                StatEnvRef<MutableInjectionTest>,
+                MutableInjectionTest,
+            > for Rc<RefCell<InjectedVariable>>
         {
             fn from_arguments<'e>(
                 args: &mut CommandArguments,
-                context:&mut Context<'e, MutableInjectionTest>
+                context: &Context<StatEnvRef<MutableInjectionTest>, MutableInjectionTest>,
             ) -> Result<Rc<RefCell<InjectedVariable>>, Error> {
                 Ok(context.get_environment().variable.clone())
             }
@@ -381,14 +398,15 @@ mod tests {
         )?
         .with_state_argument(ArgumentInfo::string_argument("nothing"));
 
-        let injection = MutableInjectionTest {
+        let injection = Box::leak(Box::new(MutableInjectionTest {
             variable: Rc::new(RefCell::new(InjectedVariable(
                 "injected string".to_string(),
             ))),
             cr: cr,
             store: Arc::new(Mutex::new(Box::new(crate::store::NoStore))),
-        };
-        let mut pi = PlanInterpreter::new(&injection);
+        }));
+        let envref = StatEnvRef(injection);
+        let mut pi = PlanInterpreter::new(envref);
         pi.with_query("injected")?;
         println!(
             "{}",
@@ -399,7 +417,7 @@ mod tests {
             pi.state.as_ref().unwrap().data.try_into_string()?,
             "Hello injected string"
         );
-        assert_eq!(pi.environment.variable.borrow().0, "changed");
+        assert_eq!(pi.environment.get().variable.borrow().0, "changed");
         Ok(())
     }
 
@@ -429,7 +447,7 @@ mod tests {
             .with_argument(ArgumentInfo::string_argument("who"));
         }
 
-        let mut pi = PlanInterpreter::new(&env);
+        let mut pi = PlanInterpreter::new(env.to_ref());
         pi.with_query("hello.txt/-/greet-world").unwrap();
         //println!("{:?}", pi.plan);
         println!(
