@@ -187,16 +187,24 @@ impl<V:ValueInterface, BC:BinCache> Cache<V> for SerializingCache<V, BC>{
         let b = self.get_binary(query).ok_or(Error::not_available().with_query(query))?;
         let metadata = self.get_metadata(query).ok_or(Error::not_available().with_query(query))?;
         let type_identifier = metadata.type_identifier()?;
-        let extension = metadata.extension().unwrap_or("b".to_owned());
+        let extension = metadata.extension().unwrap_or("b".to_owned()); // TODO: what is the default extension ?
         let value = V::deserialize_from_bytes(&b, &type_identifier, &extension)?;
         Ok(State::from_value_and_metadata(value, metadata))
     }
 
     fn set(&mut self, state:State<V>)->Result<(),Error> {
         let value = state.data.as_ref();
-        let format = state.metadata.extension().unwrap_or(value.default_extension().into_owned());
-        let b = state.data.as_bytes(&format)?;
-        self.set_binary(&b, &state.metadata)?;
+        if let Some(extension) = state.metadata.extension(){
+            let b = state.data.as_bytes(&extension)?;
+            self.set_binary(&b, &state.metadata)?;
+        }
+        else{
+            let extension = value.default_extension();
+            let b = value.as_bytes(extension.as_ref())?;
+            let mut metadata = state.metadata.as_ref().clone();
+            metadata.set_extension(&extension)?;
+            self.set_binary(&b, &metadata)?;
+        }
         Ok(())
     }
 }

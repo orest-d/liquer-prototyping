@@ -314,6 +314,9 @@ impl MetadataRecord {
     pub fn filename(&self) -> Option<String> {
         self.filename.clone()
     }
+    pub fn set_filename(&mut self, filename: &str) {
+        self.filename = Some(filename.to_string());
+    }
     pub fn extension(&self) -> Option<String> {
         if let Some(filename) = &self.filename {
             let parts: Vec<&str> = filename.split('.').collect();
@@ -322,6 +325,22 @@ impl MetadataRecord {
             }
         }
         None
+    }
+    pub fn set_extension(&mut self, extension: &str) {
+        if let Some(filename) = &mut self.filename {
+            let mut parts: Vec<&str> = filename.split('.').collect();
+            if parts.len() > 1 {
+                parts.pop();
+                parts.push(extension);
+                *filename = parts.join(".");
+            } else {
+                filename.push_str(".");
+                filename.push_str(extension);
+            }
+        }
+        else{
+            self.filename = Some(format!("file.{}",extension));
+        }
     }
 }
 
@@ -496,6 +515,25 @@ impl Metadata {
             }
         }
         None
+    }
+    
+    pub fn set_extension(&mut self, extension: &str)->Result<&mut Self, Error> {
+        match self {
+            Metadata::LegacyMetadata(_) => {
+                let mut error = Error::general_error(
+                    "Cannot set extension on legacy metadata".to_string(),
+                );
+                if let Ok(query) = self.query() {
+                    Err(error.with_query(&query))
+                } else {
+                    Err(error)
+                }        
+            }
+            Metadata::MetadataRecord(m) => {
+                m.set_extension(extension);
+                Ok(self)
+            }
+        }   
     }
 }
 
