@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
+use chrono::format;
+
 use crate::error::Error;
 use crate::state::State;
 use crate::value::ValueInterface;
@@ -181,8 +183,13 @@ impl<V:ValueInterface, BC:BinCache> BinCache for SerializingCache<V, BC>{
 }
 
 impl<V:ValueInterface, BC:BinCache> Cache<V> for SerializingCache<V, BC>{
-    fn get(&self, _query:&Query)->Result<State<V>,Error> {
-        todo!()
+    fn get(&self, query:&Query)->Result<State<V>,Error> {
+        let b = self.get_binary(query).ok_or(Error::not_available().with_query(query))?;
+        let metadata = self.get_metadata(query).ok_or(Error::not_available().with_query(query))?;
+        let type_identifier = metadata.type_identifier()?;
+        let extension = metadata.extension().unwrap_or("b".to_owned());
+        let value = V::deserialize_from_bytes(&b, &type_identifier, &extension)?;
+        Ok(State::from_value_and_metadata(value, metadata))
     }
 
     fn set(&self, _state:State<V>)->Result<(),Error> {

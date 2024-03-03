@@ -15,6 +15,13 @@ impl<V: ValueInterface> State<V> {
             metadata: Arc::new(Metadata::new()),
         }
     }
+    pub fn from_value_and_metadata(value:V, metadata:Arc<Metadata>) -> State<V> {
+        State {
+            data: value.into(),
+            metadata: metadata,
+        }
+    }
+
     pub fn with_metadata(&self, metadata: Metadata) -> Self {
         State {
             data: self.data.clone(),

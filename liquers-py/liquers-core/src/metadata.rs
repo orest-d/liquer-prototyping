@@ -127,7 +127,7 @@ pub struct MetadataRecord {
     pub message: String,
     pub is_error: bool,
     pub media_type: String,
-    pub filename: Option<String>
+    pub filename: Option<String>,
 }
 
 mod query_format {
@@ -308,6 +308,21 @@ impl MetadataRecord {
         self.add_log_entry(LogEntry::error(message.to_owned()));
         self
     }
+    pub fn type_identifier(&self) -> String {
+        self.type_identifier.to_string()
+    }
+    pub fn filename(&self) -> Option<String> {
+        self.filename.clone()
+    }
+    pub fn extension(&self) -> Option<String> {
+        if let Some(filename) = &self.filename {
+            let parts: Vec<&str> = filename.split('.').collect();
+            if parts.len() > 1 {
+                return Some(parts.last().unwrap().to_string());
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -427,6 +442,60 @@ impl Metadata {
                 panic!("Cannot set type_identifier on unsupported legacy metadata")
             }
         }
+    }
+    pub fn type_identifier(&self) -> Result<String, Error> {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                if let Some(Value::String(type_identifier)) = o.get("type_identifier") {
+                    Ok(type_identifier.to_string())
+                } else {
+                    let mut error = Error::general_error(
+                        "type_identifier not found in legacy metadata".to_string(),
+                    );
+                    if let Ok(query) = self.query() {
+                        Err(error.with_query(&query))
+                    } else {
+                        Err(error)
+                    }
+                }
+            }
+            Metadata::MetadataRecord(m) => Ok(m.type_identifier()),
+            _ => {
+                let mut error = Error::general_error(
+                    "type_identifier is not defined in non-object legacy metadata".to_string(),
+                );
+                if let Ok(query) = self.query() {
+                    Err(error.with_query(&query))
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+    pub fn filename(&self) -> Option<String> {
+        match self {
+            Metadata::LegacyMetadata(serde_json::Value::Object(o)) => {
+                if let Some(Value::String(filename)) = o.get("filename") {
+                    Some(filename.to_string())
+                } else {
+                    self.query()
+                        .unwrap_or(Query::new())
+                        .filename()
+                        .map(|f| f.encode().to_string())
+                }
+            }
+            Metadata::MetadataRecord(m) => m.filename(),
+            _ => None,
+        }
+    }
+    pub fn extension(&self) -> Option<String> {
+        if let Some(filename) = self.filename() {
+            let parts: Vec<&str> = filename.split('.').collect();
+            if parts.len() > 1 {
+                return Some(parts.last().unwrap().to_string());
+            }
+        }
+        None
     }
 }
 

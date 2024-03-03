@@ -6,7 +6,7 @@ use std::error;
 use std::fmt;
 use std::fmt::Display;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ErrorType {
     ArgumentMissing,
     ActionNotRegistered,
@@ -20,6 +20,7 @@ pub enum ErrorType {
     CacheNotSupported,
     UnknownCommand,
     NotSupported,
+    NotAvailable,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -46,6 +47,23 @@ impl Error {
     pub fn with_query(mut self, query: &crate::query::Query) -> Self {
         self.query = Some(query.encode());
         self
+    }
+    /// Constructs an error with the `NotAvailable` error type.
+    /// This can be used when Option is converted to a result type.
+    /// This is used e.g. in cache or store when the requested data is not available.    
+    pub fn not_available() -> Self {
+        Error {
+            error_type: ErrorType::NotAvailable,
+            message: "Not available".to_string(),
+            position: Position::unknown(),
+            query: None,
+        }
+    }
+    /// Returns true if the requested item is not available.
+    /// This can be used when Option is converted to a result type.
+    /// This is used e.g. in cache or store when the requested data is not available.    
+    pub fn is_not_available(&self) -> bool {
+        self.error_type == ErrorType::NotAvailable
     }
     pub fn cache_not_supported() -> Self {
         Error {

@@ -29,7 +29,7 @@ pub enum Value {
 /// ValueInterface is a trait that must be implemented by the value type.
 /// This is a central trait that defines the minimum set of operations
 /// that must be supported by the value type.
-pub trait ValueInterface: core::fmt::Debug + Clone + Sized + ValueSerializer{
+pub trait ValueInterface: core::fmt::Debug + Clone + Sized + DefaultValueSerializer{
     /// Empty value
     fn none() -> Self;
 
@@ -455,15 +455,16 @@ impl From<&str> for Value {
     }
 }
 
-trait ValueSerializer
+// TODO: Turn this into a separate object to make it configurable
+pub trait DefaultValueSerializer
 where
     Self: Sized,
 {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error>;
-    fn from_bytes(b: &[u8], type_identifier:&str, format: &str) -> Result<Self, Error>;
+    fn deserialize_from_bytes(b: &[u8], type_identifier:&str, format: &str) -> Result<Self, Error>;
 }
 
-impl ValueSerializer for Value {
+impl DefaultValueSerializer for Value {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error> {
         match format {
             "json" => serde_json::to_vec(self).map_err(|e| {                
@@ -492,7 +493,7 @@ impl ValueSerializer for Value {
             )),
         }
     }
-    fn from_bytes(b: &[u8], _type_identifier:&str, fmt: &str) -> Result<Self, Error> {
+    fn deserialize_from_bytes(b: &[u8], _type_identifier:&str, fmt: &str) -> Result<Self, Error> {
         match fmt {
             "json" => serde_json::from_slice(b).map_err(|e| {
                 Error::new(
@@ -518,7 +519,7 @@ mod tests {
         let v = Value::I32(123);
         let b = v.as_bytes("json")?;
         println!("Serialized    {:?}: {}", v, std::str::from_utf8(&b)?);
-        let w: Value = ValueSerializer::from_bytes(&b, "generic", "json")?;
+        let w: Value = DefaultValueSerializer::deserialize_from_bytes(&b, "generic", "json")?;
         println!("De-Serialized {:?}", w);
         Ok(())
     }
