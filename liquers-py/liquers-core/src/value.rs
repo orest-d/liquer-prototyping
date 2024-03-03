@@ -29,7 +29,7 @@ pub enum Value {
 /// ValueInterface is a trait that must be implemented by the value type.
 /// This is a central trait that defines the minimum set of operations
 /// that must be supported by the value type.
-pub trait ValueInterface: core::fmt::Debug + Clone + Sized{
+pub trait ValueInterface: core::fmt::Debug + Clone + Sized + ValueSerializer{
     /// Empty value
     fn none() -> Self;
 
@@ -132,6 +132,30 @@ pub trait ValueInterface: core::fmt::Debug + Clone + Sized{
 
     /// Try to get a JSON-serializable value
     fn try_into_json_value(&self) -> Result<serde_json::Value, Error>;
+
+    /// Try to convert JSON value to value type
+    fn try_from_json_value(value:&serde_json::Value) -> Result<Self, Error>{
+        match value {
+            serde_json::Value::Null => Ok(Self::none()),
+            serde_json::Value::Bool(b) => Ok(Self::from_bool(*b)),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(Self::from_i64(i))
+                } else if let Some(f) = n.as_f64() {
+                    Ok(Self::from_f64(f))
+                } else {
+                    Err(Error::conversion_error_with_message(value, "i64 or f64", "Invalid JSON number"))
+                }
+            }
+            serde_json::Value::String(s) => Ok(Self::new(s)),
+            serde_json::Value::Array(a) => {
+                Err(Error::not_supported("JSON Array conversion not supported by default for a generic ValueInterface".to_string()))
+            }
+            serde_json::Value::Object(o) => {
+                Err(Error::not_supported("JSON Object conversion not supported by default for a generic ValueInterface".to_string()))
+            }
+        }
+    }
 }
 
 impl ValueInterface for Value {
@@ -200,7 +224,7 @@ impl ValueInterface for Value {
 
     fn identifier(&self) -> Cow<'static, str> {
         match self {
-            Value::None => "none".into(),
+            Value::None => "generic".into(),
             Value::Bool(_) => "generic".into(),
             Value::I32(_) => "generic".into(),
             Value::I64(_) => "generic".into(),
@@ -290,6 +314,37 @@ impl ValueInterface for Value {
 
     fn from_bytes(b: Vec<u8>) -> Self {
         Value::Bytes(b)
+    }
+    
+    fn try_from_json_value(value:&serde_json::Value) -> Result<Self, Error> {
+        match value {
+            serde_json::Value::Null => Ok(Value::None),
+            serde_json::Value::Bool(b) => Ok(Value::Bool(*b)),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(Value::I64(i))
+                } else if let Some(f) = n.as_f64() {
+                    Ok(Value::F64(f))
+                } else {
+                    Err(Error::conversion_error_with_message(value, "i64 or f64", "Invalid JSON number"))
+                }
+            }
+            serde_json::Value::String(s) => Ok(Value::Text(s.to_owned())),
+            serde_json::Value::Array(a) => {
+                let mut v = Vec::new();
+                for x in a {
+                    v.push(Value::try_from_json_value(x)?);
+                }
+                Ok(Value::Array(v))
+            }
+            serde_json::Value::Object(o) => {
+                let mut m = BTreeMap::new();
+                for (k, v) in o {
+                    m.insert(k.to_owned(), Value::try_from_json_value(v)?);
+                }
+                Ok(Value::Object(m))
+            }
+        }
     }
 }
 
@@ -405,13 +460,13 @@ where
     Self: Sized,
 {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error>;
-    fn from_bytes(b: &[u8], format: &str) -> Result<Self, Error>;
+    fn from_bytes(b: &[u8], type_identifier:&str, format: &str) -> Result<Self, Error>;
 }
 
 impl ValueSerializer for Value {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error> {
         match format {
-            "json" => serde_json::to_vec(self).map_err(|e| {
+            "json" => serde_json::to_vec(self).map_err(|e| {                
                 Error::new(ErrorType::SerializationError, format!("JSON error {}", e))
             }),
             "txt" | "html" => match self {
@@ -437,7 +492,7 @@ impl ValueSerializer for Value {
             )),
         }
     }
-    fn from_bytes(b: &[u8], fmt: &str) -> Result<Self, Error> {
+    fn from_bytes(b: &[u8], _type_identifier:&str, fmt: &str) -> Result<Self, Error> {
         match fmt {
             "json" => serde_json::from_slice(b).map_err(|e| {
                 Error::new(
@@ -463,7 +518,7 @@ mod tests {
         let v = Value::I32(123);
         let b = v.as_bytes("json")?;
         println!("Serialized    {:?}: {}", v, std::str::from_utf8(&b)?);
-        let w: Value = ValueSerializer::from_bytes(&b, "json")?;
+        let w: Value = ValueSerializer::from_bytes(&b, "generic", "json")?;
         println!("De-Serialized {:?}", w);
         Ok(())
     }
