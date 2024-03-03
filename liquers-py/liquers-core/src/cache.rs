@@ -143,7 +143,7 @@ impl BinCache for MemoryBinCache {
 
 pub trait Cache<V:ValueInterface>:BinCache{
     fn get(&self, query:&Query)->Result<State<V>,Error>;
-    fn set(&self, state:State<V>)->Result<(),Error>;
+    fn set(&mut self, state:State<V>)->Result<(),Error>;
 }
 
 pub struct SerializingCache<V:ValueInterface,BC:BinCache>(BC,PhantomData<V>);
@@ -192,8 +192,12 @@ impl<V:ValueInterface, BC:BinCache> Cache<V> for SerializingCache<V, BC>{
         Ok(State::from_value_and_metadata(value, metadata))
     }
 
-    fn set(&self, _state:State<V>)->Result<(),Error> {
-        todo!()
+    fn set(&mut self, state:State<V>)->Result<(),Error> {
+        let value = state.data.as_ref();
+        let format = state.metadata.extension().unwrap_or(value.default_extension().into_owned());
+        let b = state.data.as_bytes(&format)?;
+        self.set_binary(&b, &state.metadata)?;
+        Ok(())
     }
 }
 
