@@ -150,6 +150,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::cache::NoCache;
     use crate::command_metadata::ArgumentInfo;
     use crate::command_metadata::CommandMetadata;
     use crate::command_metadata::CommandMetadataRegistry;
@@ -193,6 +194,10 @@ mod tests {
         fn get_store(&self) -> Arc<Mutex<Box<dyn crate::store::Store>>> {
             self.store.clone()
         }
+        
+        fn get_cache(&self) -> Arc<Mutex<Box<dyn crate::cache::Cache<Self::Value>>>> {
+            Arc::new(Mutex::new(Box::new(NoCache::new())))
+        }
     }
 
     impl Environment for NoInjection {
@@ -217,6 +222,10 @@ mod tests {
 
         fn get_store(&self) -> Arc<Mutex<Box<dyn crate::store::Store>>> {
             panic!("NoInjection has no store")
+        }
+        
+        fn get_cache(&self) -> Arc<Mutex<Box<dyn crate::cache::Cache<Self::Value>>>> {
+            Arc::new(Mutex::new(Box::new(NoCache::new())))
         }
     }
 
@@ -248,6 +257,10 @@ mod tests {
 
         fn get_store(&self) -> std::sync::Arc<std::sync::Mutex<Box<dyn crate::store::Store>>> {
             self.store.clone()
+        }
+        
+        fn get_cache(&self) -> Arc<Mutex<Box<dyn crate::cache::Cache<Self::Value>>>> {
+            Arc::new(Mutex::new(Box::new(NoCache::new())))
         }
     }
 

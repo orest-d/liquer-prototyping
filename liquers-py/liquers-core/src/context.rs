@@ -1,14 +1,7 @@
 use std::{cell::RefCell, marker::PhantomData, rc::Rc, sync::{Arc, Mutex}};
 
 use crate::{
-    command_metadata::CommandMetadataRegistry,
-    commands::{CommandExecutor, CommandRegistry},
-    error::Error,
-    metadata::{self, MetadataRecord},
-    query::{Key, Query},
-    state::State,
-    store::{NoStore, Store},
-    value::ValueInterface,
+    cache::{Cache, NoCache}, command_metadata::CommandMetadataRegistry, commands::{CommandExecutor, CommandRegistry}, error::Error, metadata::{self, MetadataRecord}, query::{Key, Query}, state::State, store::{NoStore, Store}, value::ValueInterface
 };
 
 pub trait Environment: Sized{
@@ -24,6 +17,7 @@ pub trait Environment: Sized{
     fn get_command_executor(&self) -> &Self::CommandExecutor;
     fn get_mut_command_executor(&mut self) -> &mut Self::CommandExecutor;
     fn get_store(&self) -> Arc<Mutex<Box<dyn Store>>>;
+    fn get_cache(&self) -> Arc<Mutex<Box<dyn Cache<Self::Value>>>>;
 }
 
 pub trait EnvRef<E: Environment>: Sized {
@@ -123,20 +117,28 @@ impl <ER:EnvRef<E>, E: Environment> Context<ER, E> {
     }
 }
 
+/// Simple environment with configurable store and cache
+/// CommandRegistry is used as command executor as well as it is providing the command metadata registry.
 pub struct SimpleEnvironment<V: ValueInterface> {
     store: Arc<Mutex<Box<dyn Store>>>,
+    cache: Arc<Mutex<Box<dyn Cache<V>>>>,
     command_registry: CommandRegistry<ArcEnvRef<Self>,Self,V>
 }
 
-impl<V: ValueInterface> SimpleEnvironment<V> {
+impl<V: ValueInterface+'static> SimpleEnvironment<V> {
     pub fn new() -> Self {
         SimpleEnvironment {
             store: Arc::new(Mutex::new(Box::new(NoStore))),
-            command_registry: CommandRegistry::new()
+            command_registry: CommandRegistry::new(),
+            cache: Arc::new(Mutex::new(Box::new(NoCache::new()))),
         }
     }
     pub fn with_store(&mut self, store: Box<dyn Store>) -> &mut Self {
         self.store = Arc::new(Mutex::new(store));
+        self
+    }
+    pub fn with_cache(&mut self, cache: Box<dyn Cache<V>>) -> &mut Self {
+        self.cache = Arc::new(Mutex::new(cache));
         self
     }
     pub fn to_ref(self) -> ArcEnvRef<Self> {
@@ -165,6 +167,10 @@ impl<V: ValueInterface> Environment for SimpleEnvironment<V> {
     }
     fn get_store(&self) -> Arc<Mutex<Box<dyn Store>>>{
         self.store.clone()
+    }
+    
+    fn get_cache(&self) -> Arc<Mutex<Box<dyn Cache<Self::Value>>>> {
+        self.cache.clone()
     }
 }
 

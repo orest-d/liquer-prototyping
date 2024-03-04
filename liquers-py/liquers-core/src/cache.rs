@@ -146,6 +146,34 @@ pub trait Cache<V:ValueInterface>:BinCache{
     fn set(&mut self, state:State<V>)->Result<(),Error>;
 }
 
+pub struct NoCache<V:ValueInterface>(PhantomData<V>);
+
+impl<V:ValueInterface> NoCache<V>{
+    pub fn new()->Self{
+        NoCache(PhantomData::default())
+    }
+}
+
+impl <V:ValueInterface> BinCache for NoCache<V>{
+    fn clear(&mut self) {}
+    fn get_binary(&self, _query: &Query) -> Option<Vec<u8>> {None}
+    fn get_metadata(&self, _query: &Query) -> Option<Arc<Metadata>> {None}
+    fn set_binary(&mut self, _data: &[u8], _metadata: &Metadata) -> Result<(), Error> {Err(Error::cache_not_supported())}
+    fn set_metadata(&mut self, _metadata: &Metadata) -> Result<(), Error> {Err(Error::cache_not_supported())}
+    fn remove(&mut self, _query: &Query) -> Result<(), Error> {Err(Error::cache_not_supported())}
+    fn contains(&self, _query: &Query) -> bool {false}
+    fn keys(&self) -> Vec<Query> {Vec::new()}
+}
+
+impl<V:ValueInterface> Cache<V> for NoCache<V>{
+    fn get(&self, _query:&Query)->Result<State<V>,Error> {
+        Err(Error::cache_not_supported())
+    }
+    fn set(&mut self, _state:State<V>)->Result<(),Error> {
+        Err(Error::cache_not_supported())
+    }
+}
+
 pub struct SerializingCache<V:ValueInterface,BC:BinCache>(BC,PhantomData<V>);
 
 impl<V:ValueInterface, BC:BinCache> BinCache for SerializingCache<V, BC>{
