@@ -1,0 +1,29 @@
+
+setup:
+    preset:            liquer.config.RichPreset            # Preset class name
+    modules:                                               # Modules with commands to import
+      - liquer.ext.basic
+      - liquer.ext.dataframe_batches
+      - liquer.ext.lq_matplotlib
+      - liquer.ext.lq_openpyxl
+      - liquer.ext.lq_pandas
+      - liquer.ext.lq_pil
+      - liquer.ext.lq_plotly
+      - liquer.ext.lq_polars
+      - liquer.ext.lq_pygments
+      - liquer.ext.lq_python
+      - liquer.ext.lq_sweetviz
+      - liquer.ext.meta
+      - liquer_gui
+      - liquer_pcv
+    cache:             off                                 # Cache type (off, memory, file, ...)
+    cache_path:        cache                               # Cache path (for file cache)
+    cache_concurrency: central                             # Cache concurrency (off, local, central)
+    store_concurrency: central                             # Store concurrency (off, local, central)
+    recipe_folders:                                        # Recipe folders
+      - data
+      - reports
+    server_type:       flask                               # Server type (flask, tornado, FastAPI ...)
+    url_prefix:        "/liquer"                           # URL prefix for the server
+    port:              5000                                # Server port
+    index_link:        /liquer/web/gui                     # Index query
