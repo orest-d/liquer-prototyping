@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <!-- snip -->
+    <script src="https://cdn.plot.ly/plotly-2.14.0.min.js"></script>
+</head>
+
+<body>
+    <div>
+
+        <div id="simple_scatter_plot" class="plotly-graph-div" style="height:100%; width:100%;"></div>
+        <script type="text/javascript">
+            Plotly.newPlot("simple_scatter_plot", {
+                "data": [
+                    {
+                        "type": "scatter",
+                        "mode": "markers",
+                        "x": [
+                            1.0,
+                            3.0
+                        ],
+                        "y": [
+                            2.0,
+                            4.0
+                        ]
+                    }
+                ],
+                "layout": {},
+                "config": {}
+            });
+        </script>
+    </div>
+
+</body>
+
+</html>
