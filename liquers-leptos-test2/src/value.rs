@@ -10,8 +10,9 @@ use liquers_core::error::{Error, ErrorType};
 use liquers_core::value::{ValueInterface};
 use std::convert::{TryFrom, TryInto};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[serde(untagged)]
+use polars::prelude::*;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExtValue {
     None,
     Bool(bool),
@@ -22,6 +23,7 @@ pub enum ExtValue {
     Array(Vec<ExtValue>),
     Object(BTreeMap<String, ExtValue>),
     Bytes(Vec<u8>),
+    DataFrame(DataFrame),
 }
 
 
@@ -100,6 +102,7 @@ impl ValueInterface for ExtValue {
             ExtValue::Array(_) => "generic".into(),
             ExtValue::Object(_) => "dictionary".into(),
             ExtValue::Bytes(_) => "bytes".into(),
+            ExtValue::DataFrame(_) => "polars_dataframe".into(),
         }
     }
 
@@ -114,6 +117,7 @@ impl ValueInterface for ExtValue {
             ExtValue::Array(_) => "array".into(),
             ExtValue::Object(_) => "object".into(),
             ExtValue::Bytes(_) => "bytes".into(),
+            ExtValue::DataFrame(_) => "polars::DataFrame".into(),
         }
     }
 
@@ -128,6 +132,7 @@ impl ValueInterface for ExtValue {
             ExtValue::Array(_) => "json".into(),
             ExtValue::Object(_) => "json".into(),
             ExtValue::Bytes(_) => "b".into(),
+            ExtValue::DataFrame(_) => "csv".into(),
         }
     }
 
@@ -142,6 +147,7 @@ impl ValueInterface for ExtValue {
             ExtValue::Array(_) => "data.json".into(),
             ExtValue::Object(_) => "data.json".into(),
             ExtValue::Bytes(_) => "binary.b".into(),
+            ExtValue::DataFrame(_) => "data.csv".into(),
         }
     }
 
@@ -156,6 +162,7 @@ impl ValueInterface for ExtValue {
             ExtValue::Array(_) => "application/json".into(),
             ExtValue::Object(_) => "application/json".into(),
             ExtValue::Bytes(_) => "application/octet-stream".into(),
+            ExtValue::DataFrame(_) => "polars_dataframe".into(),
         }
     }
 
@@ -325,9 +332,9 @@ impl From<&str> for ExtValue {
 impl liquers_core::value::DefaultValueSerializer for ExtValue {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error> {
         match format {
-            "json" => serde_json::to_vec(self).map_err(|e| {                
-                Error::new(ErrorType::SerializationError, format!("JSON error {}", e))
-            }),
+            "json" => {                
+                Err(Error::new(ErrorType::SerializationError, format!("JSON error")))
+            },
             "txt" | "html" => match self {
                 ExtValue::None => Ok("none".as_bytes().to_vec()),
                 ExtValue::Bool(true) => Ok("true".as_bytes().to_vec()),
@@ -353,16 +360,22 @@ impl liquers_core::value::DefaultValueSerializer for ExtValue {
     }
     fn deserialize_from_bytes(b: &[u8], _type_identifier:&str, fmt: &str) -> Result<Self, Error> {
         match fmt {
-            "json" => serde_json::from_slice(b).map_err(|e| {
-                Error::new(
+            "json" =>  {
+                Err(Error::new(
                     ErrorType::SerializationError,
-                    format!("JSON error in from_bytes:{}", e),
-                )
-            }),
+                    format!("JSON error in from_bytes"),
+                ))
+            },
             _ => Err(Error::new(
                 ErrorType::SerializationError,
                 format!("Unsupported format in from_bytes:{}", fmt),
             )),
         }
+    }
+}
+
+impl From<DataFrame> for ExtValue {
+    fn from(value: DataFrame) -> ExtValue {
+        ExtValue::DataFrame(value)
     }
 }

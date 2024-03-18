@@ -1,5 +1,5 @@
 use leptos::*;
-use liquers_core::{command_metadata::ArgumentInfo, commands::Command2, interpreter::PlanInterpreter, metadata::Metadata, parse::{self, parse_key}, query::Key, state::State, store::MemoryStore};
+use liquers_core::{command_metadata::ArgumentInfo, commands::Command1, commands::Command2, interpreter::PlanInterpreter, metadata::Metadata, parse::{self, parse_key}, query::Key, state::State, store::MemoryStore};
 use std::sync::Mutex;
 use liquers_core::context::*;
 use liquers_core::value::ValueInterface;
@@ -51,7 +51,8 @@ fn Interpreter(query:String) -> impl IntoView {
                 let mut pi = PlanInterpreter::new(env.clone());
                 let res = pi.evaluate(&query).unwrap();
                 //let result = pi.state.as_ref().unwrap().data.try_into_string().unwrap();
-                set_result(format!("{:?}\n{}", res, res.data.try_into_string().unwrap()));
+                //set_result(format!("{:?}\n{}", res, res.data.try_into_string().unwrap()));
+                set_result(format!("{}", res.data.try_into_string().unwrap()));
             });
             }}>
             "Evaluate"
@@ -86,6 +87,33 @@ fn main() {
     ).expect("Failed to register command")
     .with_state_argument(ArgumentInfo::string_argument("text"))
     .with_argument(ArgumentInfo::string_argument("arg"));
+    cr.register_command(
+        "csv2polars",
+        Command1::from(|state: &State<LocalValue>| -> DataFrame {
+            let input:String = state.data.try_into_string().unwrap();
+            let df = CsvReader::new(std::io::Cursor::new(input.as_bytes())).finish().unwrap();
+            df
+        }),
+    ).expect("Failed to register command")
+    .with_state_argument(ArgumentInfo::string_argument("csv"));
+    cr.register_command(
+        "fmt",
+        Command1::from(|state: &State<LocalValue>| -> String {
+            match *(state.data){
+                ExtValue::None => "None".to_owned(),
+                ExtValue::Bool(b) => (if b {"true"} else {"false"}).to_owned(),
+                ExtValue::I32(x) => format!("{}", x),
+                ExtValue::I64(x) => format!("{}", x),
+                ExtValue::F64(x) => format!("{}", x),
+                ExtValue::Text(ref x) => x.clone(),
+                ExtValue::Array(ref x) => format!("{:?}", x),
+                ExtValue::Object(ref x) => format!("{:?}", x),
+                ExtValue::Bytes(_) => "Bytes".to_owned(),
+                ExtValue::DataFrame(ref df) => format!("{}", df)
+            }
+        }),
+    ).expect("Failed to register command")
+    .with_state_argument(ArgumentInfo::string_argument("csv"));
 
     let (envref, _):(ReadSignal<LocalEnvRef>,_) = create_signal(env.to_ref());
     provide_context(envref);
@@ -99,5 +127,6 @@ fn main() {
         <Hello/>
         <Interpreter query="test.txt/-/lower-xxx".to_owned()/>
         <Interpreter query="test.csv/-/testpolars-yyy".to_owned()/>
+        <Interpreter query="test.csv/-/csv2polars/fmt".to_owned()/>
     });
 }
