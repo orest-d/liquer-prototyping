@@ -54,7 +54,20 @@ fn plot(state: &State<ExtValue>) -> String {
     let trace = Scatter::new(vx, vy).mode(Mode::Markers);
     let mut plot = Plot::new();
     plot.add_trace(trace);
-    format!("{}", plot.to_inline_html(Some("simple_scatter_plot")))
+    format!("<!doctype html>
+    <html lang=\"en\">
+    
+    <head>
+        <!-- snip -->
+        <script src=\"https://cdn.plot.ly/plotly-2.14.0.min.js\"></script>
+    </head>
+    
+    <body>
+    <h1>Simple Scatter Plot test</h1>
+    {}
+    </body>
+    </html>
+    ", plot.to_inline_html(Some("simple_scatter_plot")))
 }
 
 pub fn make_command_executor(mut env: SimpleEnvironment<ExtValue>) -> SimpleEnvironment<ExtValue> {

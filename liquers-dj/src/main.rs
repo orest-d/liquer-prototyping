@@ -92,7 +92,7 @@ fn Interpreter(
                 view!{<pre>{result}</pre>}.into_any()
             }
             else {
-                view!{<div inner_html=result/>}.into_any()
+                view!{<iframe srcdoc=result/>}.into_any()
             }
         }
     }
