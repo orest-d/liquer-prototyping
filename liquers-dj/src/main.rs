@@ -1,17 +1,12 @@
 use leptos::*;
 use liquers_core::context::*;
+use liquers_core::store::MemoryStore;
 use liquers_core::value::ValueInterface;
 use liquers_core::{
-    command_metadata::ArgumentInfo,
-    commands::Command1,
-    commands::Command2,
     interpreter::PlanInterpreter,
     metadata::Metadata,
     parse::{self, parse_key},
-    query::Key,
-    state::State,
-    store::MemoryStore,
-};
+    query::Key};
 use std::sync::Mutex;
 
 use polars::prelude::*;
@@ -26,7 +21,8 @@ fn Hello() -> impl IntoView {
         || (),
         |_| async move {
             log::info!("fetching...");
-            let resp = reqwest::get("http://127.0.0.1:8080/api/test.txt")
+            //let resp = reqwest::get("http://127.0.0.1:8080/api/test.txt")
+            let resp = reqwest::get("http://localhost:8080/api/test.txt")
                 .await
                 .unwrap();
             let text = resp.text().await.unwrap();
@@ -79,7 +75,7 @@ fn Interpreter(
             //set_result("Fake result".to_string());
             envref.with_untracked(|env| {
                 let mut pi = PlanInterpreter::new(env.clone());
-                let res = pi.evaluate(&query).unwrap();
+                let res = pi.evaluate(query.as_str()).unwrap();
                 //let result = pi.state.as_ref().unwrap().data.try_into_string().unwrap();
                 //set_result(format!("{:?}\n{}", res, res.data.try_into_string().unwrap()));
                 set_result(format!("{}", res.data.try_into_string().unwrap()));
@@ -104,7 +100,7 @@ fn main() {
     _ = console_log::init_with_level(log::Level::Debug);
     let mut env: SimpleEnvironment<LocalValue> = SimpleEnvironment::new();
     env.with_store(Box::new(MemoryStore::new(&Key::new())));
-    env = commands::make_command_executor(env);
+    env = commands::make_command_executor(env).unwrap();
 
     let (envref, _): (ReadSignal<LocalEnvRef>, _) = create_signal(env.to_ref());
     provide_context(envref);

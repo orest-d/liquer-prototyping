@@ -221,6 +221,32 @@ impl ValueInterface for ExtValue {
             }
         }
     }
+    fn try_into_i64(&self) -> Result<i64, Error> {
+        match self {
+            ExtValue::I32(n) => Ok(*n as i64),
+            ExtValue::I64(n) => Ok(*n),
+            _ => Err(Error::conversion_error(self.identifier(), "i64")),
+        }
+    }
+    
+    fn try_into_bool(&self) -> Result<bool, Error> {
+        match self {
+            ExtValue::Bool(b) => Ok(*b),
+            ExtValue::I32(n) => Ok(*n != 0),
+            ExtValue::I64(n) => Ok(*n != 0),
+            _ => Err(Error::conversion_error(self.identifier(), "bool")),
+        }
+    }
+    
+    fn try_into_f64(&self) -> Result<f64, Error> {
+        match self {
+            ExtValue::I32(n) => Ok(*n as f64),
+            ExtValue::I64(n) => Ok(*n as f64),
+            ExtValue::F64(n) => Ok(*n),
+            _ => Err(Error::conversion_error(self.identifier(), "f64")),
+        }
+    }
+
 }
 
 impl TryFrom<&ExtValue> for i32 {
