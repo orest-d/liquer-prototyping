@@ -22,7 +22,9 @@ fn Hello() -> impl IntoView {
         |_| async move {
             log::info!("fetching...");
             //let resp = reqwest::get("http://127.0.0.1:8080/api/test.txt")
-            let resp = reqwest::get("http://localhost:8080/api/test.txt")
+            let baseurl = web_sys::window().unwrap().origin();
+            log::info!("baseurl: {}", baseurl);
+            let resp = reqwest::get(format!("{baseurl}/api/test.txt"))
                 .await
                 .unwrap();
             let text = resp.text().await.unwrap();
@@ -39,7 +41,7 @@ fn Hello() -> impl IntoView {
             });
 
             log::info!("fetching CSV...");
-            let resp = reqwest::get("http://127.0.0.1:8080/api/test.csv")
+            let resp = reqwest::get(format!("{baseurl}/api/test.csv"))
                 .await
                 .unwrap();
             let csv_text = resp.text().await.unwrap();
