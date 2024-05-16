@@ -497,10 +497,169 @@ impl ValueInterface for ExtValue {
 }
 */
 
-value_enum!(ExtValue (DataFrame(DataFrame)));
-//value_interface!(ExtValue (DataFrame(DataFrame):"csv"));
-value_interface!(ExtValue (DataFrame(DataFrame):"csv"));
 
+macro_rules! value_from_traits {
+    ($name:ident ($($alt:ident($t:ty):$ext:expr),*)) => {
+        impl TryFrom<&$name> for i32 {
+            type Error = Error;
+            fn try_from(value: &$name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::I32(x) => Ok(*x),
+                    $name::I64(x) => i32::try_from(*x)
+                        .map_err(|e| Error::conversion_error_with_message("I64", "i32", &e.to_string())),
+                    _ => Err(Error::conversion_error(value.type_name(), "i32")),
+                }
+            }
+        }
+        
+        impl TryFrom<$name> for i32 {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                i32::try_from(&value)
+            }
+        }
+        
+        impl From<i32> for $name {
+            fn from(value: i32) -> $name {
+                $name::I32(value)
+            }
+        }
+        
+        impl From<()> for $name {
+            fn from(_value: ()) -> $name {
+                $name::none()
+            }
+        }
+        
+        impl TryFrom<&$name> for i64 {
+            type Error = Error;
+            fn try_from(value: &$name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::I32(x) => Ok(*x as i64),
+                    $name::I64(x) => Ok(*x),
+                    _ => Err(Error::conversion_error(value.type_name(), "i64")),
+                }
+            }
+        }
+        impl TryFrom<$name> for i64 {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                i64::try_from(&value)
+            }
+        }
+        impl From<i64> for $name {
+            fn from(value: i64) -> $name {
+                $name::I64(value)
+            }
+        }
+        
+        impl TryFrom<&$name> for f64 {
+            type Error = Error;
+            fn try_from(value: &$name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::I32(x) => Ok(*x as f64),
+                    $name::I64(x) => Ok(*x as f64),
+                    $name::F64(x) => Ok(*x),
+                    _ => Err(Error::conversion_error(value.type_name(), "f64")),
+                }
+            }
+        }
+        impl TryFrom<$name> for f64 {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                f64::try_from(&value)
+            }
+        }
+
+        impl From<f64> for $name {
+            fn from(value: f64) -> $name {
+                $name::F64(value)
+            }
+        }
+        
+        impl TryFrom<&$name> for bool {
+            type Error = Error;
+            fn try_from(value: &$name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::Bool(x) => Ok(*x),
+                    $name::I32(x) => Ok(*x != 0),
+                    $name::I64(x) => Ok(*x != 0),
+                    _ => Err(Error::conversion_error(value.type_name(), "bool")),
+                }
+            }
+        }
+
+        impl TryFrom<$name> for bool {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                bool::try_from(&value)
+            }
+        }
+
+        impl From<bool> for ExtValue {
+            fn from(value: bool) -> ExtValue {
+                ExtValue::Bool(value)
+            }
+        }
+        
+        impl TryFrom<&$name> for String {
+            type Error = Error;
+            fn try_from(value: &$name) -> Result<Self, Self::Error> {
+                match value {
+                    ExtValue::Text(x) => Ok(x.to_owned()),
+                    ExtValue::I32(x) => Ok(format!("{}", x)),
+                    ExtValue::I64(x) => Ok(format!("{}", x)),
+                    ExtValue::F64(x) => Ok(format!("{}", x)),
+                    _ => Err(Error::conversion_error(value.type_name(), "string")),
+                }
+            }
+        }
+
+        impl TryFrom<$name> for String {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::Text(x) => Ok(x),
+                    $name::I32(x) => Ok(format!("{}", x)),
+                    $name::I64(x) => Ok(format!("{}", x)),
+                    $name::F64(x) => Ok(format!("{}", x)),
+                    _ => Err(Error::conversion_error(value.type_name(), "string")),
+                }
+            }
+        }
+        
+        impl From<String> for $name {
+            fn from(value: String) -> $name {
+                $name::Text(value)
+            }
+        }
+        impl From<&str> for $name {
+            fn from(value: &str) -> $name {
+                $name::Text(value.to_owned())
+            }
+        }
+
+    $(
+        impl TryFrom<$name> for $t {
+            type Error = Error;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                match value {
+                    $name::$alt(x) => Ok(x),
+                    _ => Err(Error::conversion_error(value.type_name(), stringify!($t))),
+                }
+            }
+        }
+
+        impl From<$t> for $name {
+            fn from(value: $t) -> $name {
+                $name::$alt(value)
+            }
+        }
+    )*
+        
+    }
+}
+/*
 impl TryFrom<&ExtValue> for i32 {
     type Error = Error;
     fn try_from(value: &ExtValue) -> Result<Self, Self::Error> {
@@ -609,6 +768,28 @@ impl From<&str> for ExtValue {
         ExtValue::Text(value.to_owned())
     }
 }
+*/
+/*
+impl From<DataFrame> for ExtValue {
+    fn from(value: DataFrame) -> ExtValue {
+        ExtValue::DataFrame(value)
+    }
+}
+*/
+
+macro_rules! implement_value {
+    ($name:ident ($($alt:ident($t:ty):$ext:expr),*)) => {
+        value_enum!($name ($($alt($t)),*));
+        value_interface!($name ($($alt($t):$ext),*));
+        value_from_traits!($name ($($alt($t):$ext),*));
+    }
+}
+/*
+value_enum!(ExtValue (DataFrame(DataFrame)));
+value_interface!(ExtValue (DataFrame(DataFrame):"csv"));
+value_from_traits!(ExtValue (DataFrame(DataFrame):"csv"));
+*/
+implement_value!(ExtValue (DataFrame(DataFrame):"csv"));
 
 impl liquers_core::value::DefaultValueSerializer for ExtValue {
     fn as_bytes(&self, format: &str) -> Result<Vec<u8>, Error> {
@@ -651,11 +832,5 @@ impl liquers_core::value::DefaultValueSerializer for ExtValue {
                 format!("Unsupported format in from_bytes:{}", fmt),
             )),
         }
-    }
-}
-
-impl From<DataFrame> for ExtValue {
-    fn from(value: DataFrame) -> ExtValue {
-        ExtValue::DataFrame(value)
     }
 }
