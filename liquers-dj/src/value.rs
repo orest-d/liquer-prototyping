@@ -12,6 +12,250 @@ use std::convert::{TryFrom, TryInto};
 
 use polars::prelude::*;
 
+macro_rules! value_enum {
+    ($name:ident ($($alt:ident($t:ty)),*)) => {
+        pub enum $name {
+            None,
+            Bool(bool),
+            I32(i32),
+            I64(i64),
+            F64(f64),
+            Text(String),
+            Array(Vec<$name>),
+            Object(BTreeMap<String, $name>),
+            Bytes(Vec<u8>),
+            $($alt($t),)*
+        }
+    }
+}
+
+macro_rules! value_interface {
+    ($name:ident ($($v:ident($t:ty)),*)) => {
+        impl ValueInterface for $name {
+
+        fn none() -> Self {
+            $name::None
+        }
+        fn is_none(&self) -> bool {
+            if let $name::None = self {
+                true
+            } else {
+                false
+            }
+        }
+
+        fn new(txt: &str) -> Self {
+            $name::Text(txt.to_owned())
+        }
+
+        fn try_into_string(&self) -> Result<String, Error> {
+            match self {
+                $name::I32(n) => Ok(format!("{n}")),
+                $name::I64(n) => Ok(format!("{n}")),
+                $name::F64(n) => Ok(format!("{n}")),
+                $name::Text(t) => Ok(t.to_owned()),
+                $name::Bytes(b) => Ok(String::from_utf8_lossy(b).to_string()),
+                _ => Err(Error::conversion_error(self.identifier(), "string")),
+            }
+        }
+
+        fn try_into_i32(&self) -> Result<i32, Error> {
+            match self {
+                $name::I32(n) => Ok(*n),
+                _ => Err(Error::conversion_error(self.identifier(), "i32")),
+            }
+        }
+
+        fn try_into_json_value(&self) -> Result<serde_json::Value, Error> {
+            match self {
+                $name::None => Ok(serde_json::Value::Null),
+                $name::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+                $name::I32(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+                $name::I64(n) => Ok(serde_json::Value::Number(serde_json::Number::from(*n))),
+                $name::F64(n) => Ok(serde_json::Value::Number(
+                    serde_json::Number::from_f64(*n).unwrap(),
+                )),
+                $name::Text(t) => Ok(serde_json::Value::String(t.to_owned())),
+                $name::Array(a) => {
+                    let mut v = Vec::new();
+                    for x in a {
+                        v.push(x.try_into_json_value()?);
+                    }
+                    Ok(serde_json::Value::Array(v))
+                }
+                $name::Object(o) => {
+                    let mut m = serde_json::Map::new();
+                    for (k, v) in o {
+                        m.insert(k.to_owned(), v.try_into_json_value()?);
+                    }
+                    Ok(serde_json::Value::Object(m))
+                }
+                _ => Err(Error::conversion_error(self.identifier(), "JSON value")),
+            }
+        }
+
+        fn identifier(&self) -> Cow<'static, str> {
+            match self {
+                $name::None => "generic".into(),
+                $name::Bool(_) => "generic".into(),
+                $name::I32(_) => "generic".into(),
+                $name::I64(_) => "generic".into(),
+                $name::F64(_) => "generic".into(),
+                $name::Text(_) => "text".into(),
+                $name::Array(_) => "generic".into(),
+                $name::Object(_) => "dictionary".into(),
+                $name::Bytes(_) => "bytes".into(),
+                $($name::$alt(_) => stringify!($alt).into(),)*
+            }
+        }
+
+        fn type_name(&self) -> Cow<'static, str> {
+            match self {
+                $name::None => "none".into(),
+                $name::Bool(_) => "bool".into(),
+                $name::I32(_) => "i32".into(),
+                $name::I64(_) => "i64".into(),
+                $name::F64(_) => "f64".into(),
+                $name::Text(_) => "text".into(),
+                $name::Array(_) => "array".into(),
+                $name::Object(_) => "object".into(),
+                $name::Bytes(_) => "bytes".into(),
+                $($name::$alt(_) => stringify!($t).into(),)*
+            }
+        }
+
+        fn default_extension(&self) -> Cow<'static, str> {
+            match self {
+                $name::None => "json".into(),
+                $name::Bool(_) => "json".into(),
+                $name::I32(_) => "json".into(),
+                $name::I64(_) => "json".into(),
+                $name::F64(_) => "json".into(),
+                $name::Text(_) => "txt".into(),
+                $name::Array(_) => "json".into(),
+                $name::Object(_) => "json".into(),
+                $name::Bytes(_) => "b".into(),
+                $($name::$alt(_) => stringify!($t).into(),)*
+            }
+        }
+
+        fn default_filename(&self) -> Cow<'static, str> {
+            match self {
+                $name::None => "data.json".into(),
+                $name::Bool(_) => "data.json".into(),
+                $name::I32(_) => "data.json".into(),
+                $name::I64(_) => "data.json".into(),
+                $name::F64(_) => "data.json".into(),
+                $name::Text(_) => "text.txt".into(),
+                $name::Array(_) => "data.json".into(),
+                $name::Object(_) => "data.json".into(),
+                $name::Bytes(_) => "binary.b".into(),
+                _ => format!("data.{}", self.default_extension()).into(),
+            }
+        }
+
+        fn default_media_type(&self) -> Cow<'static, str> {
+            match self {
+                $name::None => "application/json".into(),
+                $name::Bool(_) => "application/json".into(),
+                $name::I32(_) => "application/json".into(),
+                $name::I64(_) => "application/json".into(),
+                $name::F64(_) => "application/json".into(),
+                $name::Text(_) => "text/plain".into(),
+                $name::Array(_) => "application/json".into(),
+                $name::Object(_) => "application/json".into(),
+                $name::Bytes(_) => "application/octet-stream".into(),
+                _ => "application/octet-stream".into(),
+            }
+        }
+
+        fn from_string(txt: String) -> Self {
+            $name::Text(txt)
+        }
+
+        fn from_i32(n: i32) -> Self {
+            $name::I32(n)
+        }
+
+        fn from_i64(n: i64) -> Self {
+            $name::I64(n)
+        }
+
+        fn from_f64(n: f64) -> Self {
+            $name::F64(n)
+        }
+
+        fn from_bool(b: bool) -> Self {
+            $name::Bool(b)
+        }
+
+        fn from_bytes(b: Vec<u8>) -> Self {
+            $name::Bytes(b)
+        }
+
+        fn try_from_json_value(value: &serde_json::Value) -> Result<Self, Error> {
+            match value {
+                serde_json::Value::Null => Ok($name::None),
+                serde_json::Value::Bool(b) => Ok($name::Bool(*b)),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        Ok($name::I64(i))
+                    } else if let Some(f) = n.as_f64() {
+                        Ok($name::F64(f))
+                    } else {
+                        Err(Error::conversion_error_with_message(
+                            value,
+                            "i64 or f64",
+                            "Invalid JSON number",
+                        ))
+                    }
+                }
+                serde_json::Value::String(s) => Ok($name::Text(s.to_owned())),
+                serde_json::Value::Array(a) => {
+                    let mut v = Vec::new();
+                    for x in a {
+                        v.push($name::try_from_json_value(x)?);
+                    }
+                    Ok($name::Array(v))
+                }
+                serde_json::Value::Object(o) => {
+                    let mut m = BTreeMap::new();
+                    for (k, v) in o {
+                        m.insert(k.to_owned(), $name::try_from_json_value(v)?);
+                    }
+                    Ok($name::Object(m))
+                }
+            }
+        }
+        fn try_into_i64(&self) -> Result<i64, Error> {
+            match self {
+                $name::I32(n) => Ok(*n as i64),
+                $name::I64(n) => Ok(*n),
+                _ => Err(Error::conversion_error(self.identifier(), "i64")),
+            }
+        }
+
+        fn try_into_bool(&self) -> Result<bool, Error> {
+            match self {
+                $name::Bool(b) => Ok(*b),
+                $name::I32(n) => Ok(*n != 0),
+                $name::I64(n) => Ok(*n != 0),
+                _ => Err(Error::conversion_error(self.identifier(), "bool")),
+            }
+        }
+
+        fn try_into_f64(&self) -> Result<f64, Error> {
+            match self {
+                $name::I32(n) => Ok(*n as f64),
+                $name::I64(n) => Ok(*n as f64),
+                $name::F64(n) => Ok(*n),
+                _ => Err(Error::conversion_error(self.identifier(), "f64")),
+            }
+        }
+    }
+}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExtValue {
     None,
@@ -228,7 +472,7 @@ impl ValueInterface for ExtValue {
             _ => Err(Error::conversion_error(self.identifier(), "i64")),
         }
     }
-    
+
     fn try_into_bool(&self) -> Result<bool, Error> {
         match self {
             ExtValue::Bool(b) => Ok(*b),
@@ -237,7 +481,7 @@ impl ValueInterface for ExtValue {
             _ => Err(Error::conversion_error(self.identifier(), "bool")),
         }
     }
-    
+
     fn try_into_f64(&self) -> Result<f64, Error> {
         match self {
             ExtValue::I32(n) => Ok(*n as f64),
@@ -246,7 +490,6 @@ impl ValueInterface for ExtValue {
             _ => Err(Error::conversion_error(self.identifier(), "f64")),
         }
     }
-
 }
 
 impl TryFrom<&ExtValue> for i32 {
