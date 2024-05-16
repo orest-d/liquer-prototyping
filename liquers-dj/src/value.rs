@@ -7,13 +7,14 @@ use serde_json;
 use std::{borrow::Cow, collections::BTreeMap, result::Result};
 
 use liquers_core::error::{Error, ErrorType};
-use liquers_core::value::ValueInterface;
+use liquers_core::value::{self, ValueInterface};
 use std::convert::{TryFrom, TryInto};
 
 use polars::prelude::*;
 
 macro_rules! value_enum {
     ($name:ident ($($alt:ident($t:ty)),*)) => {
+        #[derive(Debug, Clone, PartialEq)]
         pub enum $name {
             None,
             Bool(bool),
@@ -30,7 +31,7 @@ macro_rules! value_enum {
 }
 
 macro_rules! value_interface {
-    ($name:ident ($($v:ident($t:ty)),*)) => {
+    ($name:ident ($($alt:ident($t:ty):$ext:expr),*)) => {
         impl ValueInterface for $name {
 
         fn none() -> Self {
@@ -135,7 +136,7 @@ macro_rules! value_interface {
                 $name::Array(_) => "json".into(),
                 $name::Object(_) => "json".into(),
                 $name::Bytes(_) => "b".into(),
-                $($name::$alt(_) => stringify!($t).into(),)*
+                $($name::$alt(_) => $ext.into(),)*
             }
         }
 
@@ -150,7 +151,7 @@ macro_rules! value_interface {
                 $name::Array(_) => "data.json".into(),
                 $name::Object(_) => "data.json".into(),
                 $name::Bytes(_) => "binary.b".into(),
-                _ => format!("data.{}", self.default_extension()).into(),
+                $($name::$alt(_) => concat!("data.", $ext).into(),)*
             }
         }
 
@@ -256,6 +257,7 @@ macro_rules! value_interface {
 }
 }
 
+/*
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExtValue {
     None,
@@ -269,7 +271,9 @@ pub enum ExtValue {
     Bytes(Vec<u8>),
     DataFrame(DataFrame),
 }
+*/
 
+/*
 impl ValueInterface for ExtValue {
     fn none() -> Self {
         ExtValue::None
@@ -491,6 +495,11 @@ impl ValueInterface for ExtValue {
         }
     }
 }
+*/
+
+value_enum!(ExtValue (DataFrame(DataFrame)));
+//value_interface!(ExtValue (DataFrame(DataFrame):"csv"));
+value_interface!(ExtValue (DataFrame(DataFrame):"csv"));
 
 impl TryFrom<&ExtValue> for i32 {
     type Error = Error;
