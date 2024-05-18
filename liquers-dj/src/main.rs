@@ -8,6 +8,7 @@ use liquers_core::{
     metadata::Metadata,
     parse::{self, parse_key},
     query::Key};
+use std::fmt::format;
 use std::sync::Mutex;
 
 use polars::prelude::*;
@@ -156,8 +157,10 @@ fn main() {
     _ = console_log::init_with_level(log::Level::Debug);
     let mut env: SimpleEnvironment<LocalValue> = SimpleEnvironment::new();
     env.with_store(Box::new(MemoryStore::new(&Key::new())));
+    let baseurl = web_sys::window().unwrap().origin();
+    env.with_async_store(Box::new(store::SimpleUrlStore::new(format!("{baseurl}/api"))));
     env = commands::make_command_executor(env).unwrap();
-
+    
     let (envref, _): (ReadSignal<LocalEnvRef>, _) = create_signal(env.to_ref());
     provide_context(envref);
 
@@ -174,7 +177,9 @@ fn main() {
             <Interpreter query="test.csv/-/csv2polars/plot".to_owned()/>
             <h2>"Plot"</h2>
             <Interpreter query="test.csv/-/csv2polars/plot".to_owned() debug=false/>
+            <h2>"Async"</h2>
             <AsyncInterpreter query="hello/lower-xxx".to_owned()/>
+            <AsyncInterpreter query="test.txt/-/lower-xxx".to_owned()/>
         }
     });
 }
