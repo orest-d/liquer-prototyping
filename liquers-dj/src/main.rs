@@ -1,5 +1,6 @@
 use leptos::*;
-use liquers_core::context::*;
+use liquers_core::{context::*, interpreter};
+use liquers_core::interpreter::AsyncPlanInterpreter;
 use liquers_core::store::MemoryStore;
 use liquers_core::value::ValueInterface;
 use liquers_core::{
@@ -13,6 +14,7 @@ use polars::prelude::*;
 
 mod commands;
 mod value;
+mod store;
 use value::*;
 
 #[component]
@@ -96,6 +98,58 @@ fn Interpreter(
     }
 }
 
+#[component]
+fn AsyncInterpreter(
+    query: String,
+    #[prop(default = true)]
+    debug: bool, 
+) -> impl IntoView {
+    let (output, set_output) = create_signal("No result".to_string());
+    let (evaluate, set_evaluate) = create_signal("".to_string());
+    let result = create_resource(
+        evaluate,
+        |q| async move {
+            if q.is_empty() {
+                return "No query".to_string();
+            }
+            let envref_signal = use_context::<ReadSignal<LocalEnvRef>>().expect("No EvvRef");
+            let envref = envref_signal.get();
+            log::info!("Evaluate");
+            let mut pi = AsyncPlanInterpreter::new(envref);
+            let res = pi.evaluate(q).await;
+            if res.is_err() {
+                return format!("Error 1: {:?}", res.err().unwrap());
+            }
+            else{
+                let res = res.unwrap().data.try_into_string();
+                if res.is_err() {
+                    return format!("Error 2: {:?}", res.err().unwrap());
+                }
+                else {
+                    return res.unwrap();
+                }
+            }
+        },
+    );
+
+    view! {
+        <button on:click={move |_| {
+            log::info!("Evaluate");
+            set_evaluate(query.clone());
+            }}>
+            "Evaluate"
+        </button>
+        {
+            if debug {
+                view!{<pre>{result}</pre>}.into_any()
+            }
+            else {
+                view!{<iframe srcdoc=result/>}.into_any()
+            }
+        }
+    }
+}
+
 type LocalValue = ExtValue;
 type LocalEnvRef = ArcEnvRef<SimpleEnvironment<LocalValue>>;
 fn main() {
@@ -120,6 +174,7 @@ fn main() {
             <Interpreter query="test.csv/-/csv2polars/plot".to_owned()/>
             <h2>"Plot"</h2>
             <Interpreter query="test.csv/-/csv2polars/plot".to_owned() debug=false/>
+            <AsyncInterpreter query="hello/lower-xxx".to_owned()/>
         }
     });
 }

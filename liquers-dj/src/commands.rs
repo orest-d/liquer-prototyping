@@ -13,6 +13,10 @@ use plotly::{Bar, Plot, Scatter};
 
 use crate::value::ExtValue;
 
+fn hello() -> Result<ExtValue, Error> {
+    Ok(ExtValue::from_string("Hello, World!".to_string()))
+}
+
 fn lower(state: &State<ExtValue>, postfix: String) -> Result<ExtValue, Error> {
     let input: String = state.data.try_into_string().unwrap();
     Ok(ExtValue::from_string(format!(
@@ -100,6 +104,7 @@ pub fn testpolars(state: &State<ExtValue>, postfix: String) -> Result<ExtValue, 
 
 pub fn make_command_executor(mut env: SimpleEnvironment<ExtValue>) -> Result<SimpleEnvironment<ExtValue>,Error> {
     let mut cr = env.get_mut_command_executor();
+    register_command!(cr, hello());
     register_command!(cr, lower(state, postfix: String));
     //println!(stringify!(register_command!(cr, lower(state, postfix: String))));
     register_command!(cr, testpolars(state, postfix: String));
