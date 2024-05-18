@@ -119,11 +119,13 @@ fn AsyncInterpreter(
             let mut pi = AsyncPlanInterpreter::new(envref);
             let res = pi.evaluate(q).await;
             if res.is_err() {
+                log::info!("Error1 {:?}", res.clone().err().unwrap());
                 return format!("Error 1: {:?}", res.err().unwrap());
             }
             else{
                 let res = res.unwrap().data.try_into_string();
                 if res.is_err() {
+                    log::info!("Error2 {:?}", res.clone().err().unwrap());
                     return format!("Error 2: {:?}", res.err().unwrap());
                 }
                 else {
@@ -135,7 +137,7 @@ fn AsyncInterpreter(
 
     view! {
         <button on:click={move |_| {
-            log::info!("Evaluate");
+            log::info!("Evaluate {}", &query);
             set_evaluate(query.clone());
             }}>
             "Evaluate"
@@ -160,7 +162,7 @@ fn main() {
     let baseurl = web_sys::window().unwrap().origin();
     env.with_async_store(Box::new(store::SimpleUrlStore::new(format!("{baseurl}/api"))));
     env = commands::make_command_executor(env).unwrap();
-    
+
     let (envref, _): (ReadSignal<LocalEnvRef>, _) = create_signal(env.to_ref());
     provide_context(envref);
 
@@ -179,7 +181,8 @@ fn main() {
             <Interpreter query="test.csv/-/csv2polars/plot".to_owned() debug=false/>
             <h2>"Async"</h2>
             <AsyncInterpreter query="hello/lower-xxx".to_owned()/>
-            <AsyncInterpreter query="test.txt/-/lower-xxx".to_owned()/>
+            <AsyncInterpreter query="test1.txt/-/lower-xxx".to_owned()/>
+            <AsyncInterpreter query="-R/test1.txt".to_owned()/>
         }
     });
 }
